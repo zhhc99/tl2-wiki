@@ -1,0 +1,28 @@
+{
+  "name": "tl2-wiki",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --pretty false",
+    "data:import": "node scripts/import-tl2-db.mjs",
+    "data:refresh": "bash scripts/refresh-tl2-data.sh",
+    "data:validate": "node scripts/validate-data.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "mdb-reader": "^3.2.0",
+    "typescript": "latest"
+  }
+}
