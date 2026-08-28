@@ -29,5 +29,11 @@ assert(classes.every(group => group.trees.length === 3), 'Expected three trees p
 assert(classes.every(group => group.trees.every(tree => tree.skills.length === 10)), 'Expected ten skills per tree')
 const skillCount = classes.reduce((sum, group) => sum + group.trees.reduce((treeSum, tree) => treeSum + tree.skills.length, 0), 0)
 assert(skillCount === 120 && skillCount === meta.counts.classSkills, 'Expected 120 class skills')
+const skills = classes.flatMap(group => group.trees.flatMap(tree => tree.skills))
+assert(skills.every(skill => skill.titleZh && skill.descriptionZh), 'Class skills have missing locale fallbacks')
+assert(skills.filter(skill => skill.titleZh !== skill.title).length === 118, 'Expected 118 official Simplified Chinese skill titles')
+assert(skills.filter(skill => skill.descriptionZh !== skill.description).length === 120, 'Expected official Simplified Chinese descriptions for all class skills')
+assert(skills.filter(skill => skill.titleZh === skill.title).map(skill => skill.title).sort().join('|') === 'Firestorm|Spider Mines', 'Unexpected English skill-title fallbacks')
+assert(meta.sources.some(source => source.url.includes('405160259')), 'Official Simplified Chinese source is missing from metadata')
 
 console.log(`Validated ${equipment.length} equipment rows, ${meta.counts.itemEffects} item effects, ${spells.length} spell-book rows and ${skillCount} class skills`)

@@ -19,8 +19,10 @@ const call = (method, params = {}) => new Promise(resolve => {
 const evaluate = async expression => (await call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result.result.value
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
+await evaluate(`location.hash='#/home'`)
+await wait(250)
 const loaded = await evaluate(`document.body.textContent.includes('4,366')`)
-if (!loaded) throw new Error('Normalized data count was not rendered')
+if (!loaded) throw new Error('Equipment count was not rendered')
 const before = await evaluate(`Boolean(document.querySelector('.search-modal'))`)
 if (before) throw new Error('Search modal unexpectedly open before keyboard test')
 await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',code:'KeyK',ctrlKey:true,bubbles:true}))`)
@@ -56,8 +58,8 @@ const effectDetail = await evaluate(`document.querySelector('.effect-list')?.tex
 if (!effectDetail) throw new Error('Imported equipment effects were not shown in the detail drawer')
 await evaluate(`document.querySelector('.drawer-close')?.click(); location.hash='#/phases'`)
 await wait(250)
-const phaseImages = await evaluate(`(() => { const images=[...document.querySelectorAll('.phase-list img')]; return images.length===6 && images.every(image=>image.complete && image.naturalWidth>0) })()`)
-if (!phaseImages) throw new Error('Phase Beast local image did not load for all regions')
+const phasePage = await evaluate(`(() => { const image=document.querySelector('.phase-guide img'); return Boolean(image?.complete && image.naturalWidth>0 && document.querySelectorAll('.phase-card').length===6 && document.querySelectorAll('.challenge-list section').length===15) })()`)
+if (!phasePage) throw new Error('Phase Beast guide, areas or challenges did not render')
 await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
 await wait(100)
 const mobileFits = await evaluate(`document.documentElement.scrollWidth <= 390`)
@@ -65,4 +67,4 @@ if (!mobileFits) throw new Error('Mobile layout has horizontal overflow')
 await call('Emulation.clearDeviceMetricsOverride')
 
 socket.close()
-console.log('Browser smoke test passed: data, shortcuts, language, effect search/detail, phase imagery and mobile fit')
+console.log('Browser smoke test passed: data, shortcuts, language, effect search/detail, Phase Beast guide and mobile fit')

@@ -7,6 +7,7 @@ const projectDir = resolve(import.meta.dirname, '..')
 const dbPath = resolve(process.argv[2] || `${projectDir}/.cache/tl2-data/tl2db_base.db`)
 const tidbiPath = resolve(process.argv[3] || `${projectDir}/.cache/tl2-data/tidbi/TIDBI-eng v1/base.mdb`)
 const outputDir = resolve(projectDir, 'public/data')
+const officialZh = JSON.parse(readFileSync(resolve(projectDir, 'scripts/official-zh.json'), 'utf8'))
 
 const sqlite = new DatabaseSync(dbPath, { readOnly: true })
 const query = (sql) => sqlite.prepare(sql).all()
@@ -262,11 +263,14 @@ const classSkills = Object.entries(skillTreeMap).map(([classId, trees]) => ({
       const entry = chooseSkill(title, passive)
       if (!entry) throw new Error(`Missing class skill in source DB: ${classId}/${treeId}/${title}`)
       const publicTitle = title === 'Iceshield' ? 'Ice Shield' : title
+      const localized = officialZh.skills[publicTitle] || {}
       return {
         id: entry.id,
         slug: slug(publicTitle),
         title: publicTitle,
         description: clean(entry.descr),
+        titleZh: localized.title || publicTitle,
+        descriptionZh: localized.description || clean(entry.descr),
         level: passive ? [1, 7, 14][index - 7] : [1, 7, 14, 21, 28, 35, 42][index],
         kind: passive ? 'passive' : 'active',
         maxRank: toInt(entry.maxlevel),
@@ -290,6 +294,7 @@ write('meta.json', {
   sources: [
     { name: 'Awkward-im/Torchlight tl2db_base.db', url: 'https://github.com/Awkward-im/Torchlight', role: 'Base items, spell books and class skills' },
     { name: 'TIDBI-eng v1.05', url: 'http://www.dethguild.com/torchlight_item_database.php', role: 'Exact item values, effects and set bonuses' },
+    { name: 'Official TRANSLATIONS (v.39)', url: 'https://steamcommunity.com/sharedfiles/filedetails/?id=405160259', role: 'Official Simplified Chinese class and skill strings' },
   ],
   sourceDatabases: [basename(dbPath), basename(tidbiPath)],
   generatedAt: new Date().toISOString(),
