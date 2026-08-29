@@ -5,3 +5,4 @@ dist/
 npm-debug.log*
 *.tsbuildinfo
 .cache/
+/tl2-wiki-data/
