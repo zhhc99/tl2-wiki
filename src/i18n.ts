@@ -10,7 +10,7 @@ export const localeOptions: { code: Lang; label: string; htmlLang: string }[] = 
 ]
 
 const en = {
-  navHome:'Home', navClasses:'Classes', navMechanics:'Mechanics', navItems:'Equipment', navSpells:'Spell Books', navPhases:'Phase Beasts',
+  navHome:'Home', navClasses:'Classes', navMechanics:'Mechanics', navItems:'Equipment', navBuilds:'Build Planner', navGambling:'Gambling', navSpells:'Spell Books', navPhases:'Phase Beasts',
   search:'Search TL2 Wiki…', classesTitle:'Classes', skillTrees:'Skill trees', active:'Active', passive:'Passive', unlocks:'Unlock level',
   rank:'Rank', skillValues:'Rank values', tierBonuses:'Tier bonuses', requirement:'Requirement', cooldown:'Cooldown', range:'Range',
   weaponDamagePct:'Weapon damage', chargeScalePct:'Charge gained', durationMs:'Duration', maxTargets:'Maximum targets', projectiles:'Projectiles',
@@ -24,7 +24,7 @@ const en = {
 }
 
 const zhCN: typeof en = {
-  navHome:'首页', navClasses:'职业', navMechanics:'机制', navItems:'装备', navSpells:'技能书', navPhases:'相位兽',
+  navHome:'首页', navClasses:'职业', navMechanics:'机制', navItems:'装备', navBuilds:'配装', navGambling:'赌博', navSpells:'技能书', navPhases:'相位兽',
   search:'搜索 TL2 Wiki…', classesTitle:'职业', skillTrees:'技能树', active:'主动', passive:'被动', unlocks:'解锁等级',
   rank:'技能等级', skillValues:'本级数值', tierBonuses:'阶段奖励', requirement:'使用条件', cooldown:'冷却时间', range:'范围',
   weaponDamagePct:'武器伤害', chargeScalePct:'怒气获得', durationMs:'持续时间', maxTargets:'最多目标', projectiles:'投射物数量',
@@ -38,7 +38,7 @@ const zhCN: typeof en = {
 }
 
 const zhTW: typeof en = {
-  navHome:'首頁', navClasses:'職業', navMechanics:'機制', navItems:'裝備', navSpells:'技能書', navPhases:'相位獸',
+  navHome:'首頁', navClasses:'職業', navMechanics:'機制', navItems:'裝備', navBuilds:'配裝', navGambling:'賭博', navSpells:'技能書', navPhases:'相位獸',
   search:'搜尋 TL2 Wiki…', classesTitle:'職業', skillTrees:'技能樹', active:'主動', passive:'被動', unlocks:'解鎖等級',
   rank:'技能等級', skillValues:'本級數值', tierBonuses:'階段獎勵', requirement:'使用條件', cooldown:'冷卻時間', range:'範圍',
   weaponDamagePct:'武器傷害', chargeScalePct:'怒氣獲得', durationMs:'持續時間', maxTargets:'最多目標', projectiles:'投射物數量',

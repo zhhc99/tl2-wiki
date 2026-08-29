@@ -50,14 +50,16 @@ const itemAttributes = groupBy(query(`
 `), (row) => row.item_id)
 const rawItemEffects = groupBy(query(`
   SELECT ia.item_id, ia.affix_name, ae.effect_name, ae.effect_type, ae.activation,
-    ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json
+    ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json,
+    ae.rendered_description_en, ae.rendered_description_zh_cn, ae.rendered_description_zh_tw
   FROM item_affixes ia
   JOIN affix_effects ae ON ae.affix_id=ia.resolved_affix_id
   ORDER BY ia.item_id, ia.inherited_depth, ia.ordinal, ae.ordinal
 `), (row) => row.item_id)
 const rawSetEffects = groupBy(query(`
   SELECT sets.internal_name AS set_name, sb.required_count, ae.effect_name, ae.effect_type,
-    ae.activation, ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json
+    ae.activation, ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json,
+    ae.rendered_description_en, ae.rendered_description_zh_cn, ae.rendered_description_zh_tw
   FROM item_sets sets
   JOIN set_bonuses sb ON sb.set_id=sets.id
   LEFT JOIN affix_effects ae ON ae.affix_id=sb.resolved_affix_id
@@ -82,6 +84,11 @@ const normalizeRawEffect = (row) => {
     min: row.min_value == null ? null : number(row.min_value),
     max: row.max_value == null ? null : number(row.max_value),
     useOwnerLevel: Boolean(propertyValue('USEOWNERLEVEL')),
+    ...(row.rendered_description_en ? { text: local(
+      row.rendered_description_en,
+      row.rendered_description_zh_cn,
+      row.rendered_description_zh_tw,
+    ) } : {}),
   }
 }
 
@@ -133,14 +140,16 @@ const equipment = itemRows.map((row) => {
     unitType: clean(row.unit_type),
     rarity: rarityFor(row),
     level: number(row.level),
-    requiredLevel: attrNumber(attributes, 'LEVEL_REQUIRED'),
+    requiredLevel: row.required_level ?? attrNumber(attributes, 'LEVEL_REQUIRED'),
     requirements: enrichment?.requirements || fallbackRequirements,
     sockets: number(row.sockets),
     maxSockets: enrichment?.maxSockets ?? attrNumber(attributes, 'MAX_SOCKETS', null),
     speed: enrichment?.speed ?? attrNumber(attributes, 'SPEED', null),
     blockChance: enrichment?.blockChance ?? attrNumber(attributes, 'BLOCK_CHANCE', null),
-    minimumDropLevel: enrichment?.minimumDropLevel ?? row.min_level,
-    maximumDropLevel: enrichment?.maximumDropLevel ?? (number(row.max_level) >= 999 ? null : row.max_level),
+    minimumDropLevel: row.drop_min_level ?? enrichment?.minimumDropLevel ?? row.min_level,
+    maximumDropLevel: row.drop_max_level != null
+      ? (number(row.drop_max_level) >= 999 ? null : row.drop_max_level)
+      : enrichment?.maximumDropLevel ?? (number(row.max_level) >= 999 ? null : row.max_level),
     classRequirement: enrichment?.classRequirement || clean(attributes.get('REQUIREMENT_CLASS')?.value_text) || null,
     set,
     description: row.description_en ? local(row.description_en, row.description_zh_cn, row.description_zh_tw) : null,
@@ -159,7 +168,7 @@ const equipment = itemRows.map((row) => {
     specialSource: enrichment?.specialSource || null,
     sourceFile: clean(row.source_path),
   }
-})
+}).filter((item) => item.rarity !== 'normal')
 
 const skillTreeMap = {
   berserker: {
@@ -294,35 +303,31 @@ const classSkills = Object.entries(skillTreeMap).map(([classId, trees]) => ({
   })),
 }))
 
-const roman = (value) => ['','I','II','III','IV','V','VI'][value] || String(value)
 const stripRank = (value) => clean(value).replace(/\s+(?:I|II|III|IV|V|VI|[1-6])$/i, '').trim()
-const spellSkillsByIcon = groupBy(query(`
-  SELECT display_name_en, display_name_zh_cn, display_name_zh_tw,
-    base_description_en, base_description_zh_cn, base_description_zh_tw, icon, icon_path
-  FROM skills
-  WHERE skill_group='SHARED' AND icon LIKE 'spell_%' AND display_name_en IS NOT NULL
-`), (row) => clean(row.icon).toLowerCase())
+const stripLocalizedRank = (value) => clean(value).replace(/\s*(?:III|VI|II|IV|I|V|[1-6])$/, '').trim()
+const stripBookPrefix = (value) => clean(value).replace(/^(?:Tome|Spell|秘籍|秘笈|法术|法術)\s*[:：]\s*/i, '')
+const spellBookRowsByGuid = new Map(query(`
+  SELECT books.*, files.path AS source_path
+  FROM skill_books books
+  JOIN source_files files ON files.id=books.source_file_id
+`).map((row) => [clean(row.guid), row]))
 const spellBooks = spellBookSource.map((spell) => {
-  const candidates = spellSkillsByIcon.get(clean(spell.icon).toLowerCase()) || []
-  const family = stripRank(spell.family)
-  const exactCandidates = candidates.filter((row) => stripRank(row.display_name_en).toLowerCase() === family.toLowerCase())
-  const candidate = [...exactCandidates].sort((a, b) => {
-    const score = (row) => (stripRank(row.display_name_en).toLowerCase() === family.toLowerCase() ? 10 : 0)
-      + (clean(row.display_name_en).endsWith(roman(spell.tier)) ? 2 : 0)
-      + (row.base_description_en ? 1 : 0)
-    return score(b) - score(a)
-  })[0]
-  const localizedFamily = candidate ? local(
-    family,
-    stripRank(candidate.display_name_zh_cn),
-    stripRank(candidate.display_name_zh_tw),
-  ) : local(family, null, null)
+  const row = spellBookRowsByGuid.get(clean(spell.id))
+  if (!row) throw new Error(`Missing normalized skill book ${spell.id}: ${spell.name}`)
+  const localizedFamily = local(
+    stripRank(spell.family),
+    stripLocalizedRank(stripBookPrefix(row.display_name_zh_cn)),
+    stripLocalizedRank(stripBookPrefix(row.display_name_zh_tw)),
+  )
   return {
     ...spell,
-    name: local(spell.name, candidate?.display_name_zh_cn, candidate?.display_name_zh_tw),
+    name: local(row.display_name_en, row.display_name_zh_cn, row.display_name_zh_tw),
     family: localizedFamily,
-    description: local(spell.description, candidate?.base_description_zh_cn, candidate?.base_description_zh_tw),
-    iconPath: candidate?.icon_path ? pathForWeb(candidate.icon_path) : `game-icons/skills/${spell.icon}.png`,
+    level: number(row.item_level),
+    requiredLevel: number(row.required_level),
+    description: local(row.description_en, row.description_zh_cn, row.description_zh_tw),
+    iconPath: pathForWeb(row.icon_path),
+    sourceFile: clean(row.source_path),
   }
 })
 
@@ -367,7 +372,7 @@ const meta = {
   counts: {
     equipment: equipment.length,
     enrichedEquipment: equipment.filter((item) => item.exactEnrichment).length,
-    itemEffects: equipment.reduce((sum, item) => sum + (item.effects.length || item.rawEffects.length), 0),
+    itemEffects: equipment.reduce((sum, item) => sum + (item.rawEffects.length || item.effects.length), 0),
     spellBooks: spellBooks.length,
     localizedSpellBooks: spellBooks.filter((spell) => spell.name.zhCN !== spell.name.en || spell.name.zhTW !== spell.name.en).length,
     classSkills: selectedSkills.length,
@@ -377,7 +382,11 @@ const meta = {
   },
   gaps: {
     equipmentWithoutDescription: equipment.filter((item) => !item.description).length,
-    equipmentEffectsWithoutOfficialChinese: equipment.reduce((sum, item) => sum + (item.effects.length || item.rawEffects.length), 0),
+    equipmentEffectsWithoutOfficialChinese: equipment.reduce((sum, item) => {
+      const effects = item.rawEffects.length ? item.rawEffects : item.effects
+      return sum + effects.filter((effect) => !effect.text || effect.text.zhCN === effect.text.en).length
+    }, 0),
+    spellBookNamesWithoutOfficialChinese: spellBooks.filter((spell) => spell.name.zhCN === spell.name.en).length,
     spellBooksWithoutOfficialChineseDescription: spellBooks.filter((spell) => spell.description.zhCN === spell.description.en).length,
     phaseRoomsWithoutInstruction: query(`
       SELECT COUNT(*) AS count FROM phase_beast_room_layouts layouts
