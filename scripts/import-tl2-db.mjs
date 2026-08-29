@@ -57,14 +57,16 @@ const itemDisplayEffects = groupBy(query(`
   WHERE ide.is_player_visible=1
   ORDER BY ide.item_id, ide.ordinal
 `), (row) => row.item_id)
-const rawSetEffects = groupBy(query(`
-  SELECT sets.internal_name AS set_name, sb.required_count, ae.effect_name, ae.effect_type,
-    ae.activation, ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json,
-    ae.rendered_description_en, ae.rendered_description_zh_cn, ae.rendered_description_zh_tw
-  FROM item_sets sets
-  JOIN set_bonuses sb ON sb.set_id=sets.id
-  LEFT JOIN affix_effects ae ON ae.affix_id=sb.resolved_affix_id
-  ORDER BY sets.internal_name, sb.required_count, sb.ordinal, ae.ordinal
+const setDisplayEffects = groupBy(query(`
+  SELECT sets.internal_name AS set_name, sde.required_count, sde.ordinal,
+    sde.effect_name, sde.effect_type, sde.text_en, sde.text_zh_cn, sde.text_zh_tw,
+    sde.render_status, sde.values_json, ae.activation, ae.duration, ae.chance,
+    ae.min_value, ae.max_value, ae.properties_json
+  FROM set_display_effects sde
+  JOIN item_sets sets ON sets.id=sde.set_id
+  JOIN affix_effects ae ON ae.id=sde.affix_effect_id
+  WHERE sde.is_player_visible=1
+  ORDER BY sets.internal_name, sde.required_count, sde.ordinal
 `), (row) => String(row.set_name || '').toLowerCase())
 
 const attributeMap = (itemId) => new Map((itemAttributes.get(itemId) || []).map((row) => [row.name, row]))
@@ -95,6 +97,16 @@ const normalizeRawEffect = (row) => {
 const cleanDisplayEffectText = (value) => clean(value)
   .replace(/\s*[（(][^()（）]*<stat:[^>]+>[^()（）]*[)）]\s*$/i, '')
   .trim()
+const correctOverTimeDisplayValue = (value, effect, minimum, maximum) => {
+  if (effect.type !== 'DAMAGE' || !(effect.duration > 0) || minimum == null) return value
+  const total = (amount) => Math.ceil(Math.abs(amount)) * effect.duration
+  const correctedMinimum = total(minimum)
+  const correctedMaximum = total(maximum ?? minimum)
+  const display = correctedMinimum === correctedMaximum
+    ? String(correctedMinimum)
+    : `${correctedMinimum}-${correctedMaximum}`
+  return value.replace(/\d[\d,.]*(?:\s*[-–]\s*\d[\d,.]*)?/, display)
+}
 const normalizeDisplayEffect = (row) => {
   const effect = normalizeRawEffect(row)
   const values = JSON.parse(row.values_json || '{}')
@@ -104,11 +116,8 @@ const normalizeDisplayEffect = (row) => {
     ...effect,
     min: minimum == null ? null : number(minimum),
     max: maximum == null ? null : number(maximum),
-    text: local(
-      cleanDisplayEffectText(row.text_en),
-      cleanDisplayEffectText(row.text_zh_cn),
-      cleanDisplayEffectText(row.text_zh_tw),
-    ),
+    text: local(...[row.text_en, row.text_zh_cn, row.text_zh_tw].map((value) =>
+      correctOverTimeDisplayValue(cleanDisplayEffectText(value), effect, minimum, maximum))),
     renderStatus: clean(row.render_status),
   }
 }
@@ -143,9 +152,9 @@ const equipment = itemRows.map((row) => {
     row.set_display_name_zh_tw,
   ) : null
   const effects = (itemDisplayEffects.get(row.id) || []).map(normalizeDisplayEffect).filter((effect) => effect.type)
-  const rawBonuses = (rawSetEffects.get(String(row.set_name || '').toLowerCase()) || []).map((bonus) => ({
+  const rawBonuses = (setDisplayEffects.get(String(row.set_name || '').toLowerCase()) || []).map((bonus) => ({
     pieces: number(bonus.required_count),
-    ...normalizeRawEffect(bonus),
+    ...normalizeDisplayEffect(bonus),
   })).filter((effect) => effect.type)
   const baseDamageMin = attrNumber(attributes, 'MINDAMAGE', null)
   const baseDamageMax = attrNumber(attributes, 'MAXDAMAGE', null)
@@ -173,6 +182,7 @@ const equipment = itemRows.map((row) => {
       : enrichment?.maximumDropLevel ?? (number(row.max_level) >= 999 ? null : row.max_level),
     classRequirement: enrichment?.classRequirement || clean(attributes.get('REQUIREMENT_CLASS')?.value_text) || null,
     set,
+    setInternalName: row.set_name ? clean(row.set_name) : null,
     description: row.description_en ? local(row.description_en, row.description_zh_cn, row.description_zh_tw) : null,
     iconPath: pathForWeb(row.icon_path),
     armor: enrichment?.armor || {},
@@ -213,6 +223,32 @@ const skillTreeMap = {
   },
 }
 const classGroup = { berserker: 'BERSERKER', outlander: 'WANDERER', embermage: 'ARBITER', engineer: 'RAILMAN' }
+const effectTemplates = new Map(query(`
+  SELECT internal_name, good_description_en, good_description_zh_cn, good_description_zh_tw,
+    good_description_over_time_en, good_description_over_time_zh_cn, good_description_over_time_zh_tw,
+    bad_description_en, bad_description_zh_cn, bad_description_zh_tw,
+    bad_description_over_time_en, bad_description_over_time_zh_cn, bad_description_over_time_zh_tw,
+    min_value_bound, max_value_bound, display_precision, display_precision_max_value,
+    properties_json
+  FROM effect_display_templates
+`).map((row) => [clean(row.internal_name).toUpperCase(), row]))
+const skillGraphRows = query(`
+  SELECT g.internal_name, gp.x, gp.y
+  FROM graphs g
+  JOIN graph_points gp ON gp.graph_id=g.id
+  ORDER BY g.internal_name, gp.ordinal
+`)
+const skillGraphs = Object.fromEntries([...groupBy(skillGraphRows, (row) => clean(row.internal_name).toUpperCase())]
+  .map(([name, rows]) => [name, rows.map((row) => [number(row.x), number(row.y)])]))
+const skillDisplayNames = new Map(query(`
+  SELECT internal_name, display_name_en, display_name_zh_cn, display_name_zh_tw
+  FROM skills
+  WHERE internal_name IS NOT NULL AND display_name_en IS NOT NULL
+`).map((row) => [clean(row.internal_name).toLowerCase(), local(
+  row.display_name_en,
+  row.display_name_zh_cn,
+  row.display_name_zh_tw,
+)]))
 const skillCandidates = query(`
   SELECT s.*, sf.path AS source_path,
     (SELECT COUNT(*) FROM skill_levels sl WHERE sl.skill_id=s.id) AS level_count
@@ -263,7 +299,8 @@ const chooseSkill = (title, expectedKind, group) => {
 const metricKeys = new Map([
   ['WEAPONDAMAGEPCT', 'weaponDamagePct'],
   ['CHARGESCALEPCT', 'chargeScalePct'],
-  ['DURATIONOVERRIDEMS', 'durationMs'],
+  ['MANACOST', 'manaCost'],
+  ['MANACOSTOT', 'manaPerSecond'],
   ['MAX_UNITS_HIT', 'maxTargets'],
   ['CLONECOUNT', 'projectiles'],
 ])
@@ -279,11 +316,79 @@ const collectMetrics = (node) => {
   visit(node)
   return [...new Map(values.map((metric) => [`${metric.kind}:${metric.value}`, metric])).values()]
 }
+const skillEffectFromProperties = (properties, fallback = {}) => {
+  const propertyValue = (name) => properties[name]?.value ?? null
+  const type = clean(fallback.effect_type || propertyValue('TYPE')).toUpperCase()
+  const template = effectTemplates.get(type)
+  if (!type || !template) return null
+  const templateProperties = JSON.parse(template.properties_json || '{}')
+  const templateProperty = (name) => templateProperties[name]?.raw ?? templateProperties[name]?.value ?? null
+  const valueFrom = (slot, fallbackValue) => {
+    const propertyName = clean(templateProperty(`VALUE${slot}`)).toUpperCase()
+    if (!propertyName || propertyName === 'NA') return fallbackValue ?? null
+    const value = propertyValue(propertyName)
+    return Number.isFinite(Number(value)) ? Number(value) : fallbackValue ?? null
+  }
+  const minimum = valueFrom(1, fallback.min_value)
+  const maximum = valueFrom(2, fallback.max_value ?? minimum)
+  const values = Object.fromEntries([1, 2, 3, 4, 5].map((slot) => [slot, valueFrom(slot, null)]))
+  const durationValue = propertyValue('DURATION') ?? fallback.duration
+  const duration = Number.isFinite(Number(durationValue)) ? Number(durationValue) : 0
+  const lowerBound = template.min_value_bound
+  const upperBound = template.max_value_bound
+  const good = minimum == null || lowerBound == null || upperBound == null
+    ? (minimum ?? 0) >= 0
+    : minimum * (upperBound - lowerBound) >= 0
+  const variant = `${good ? 'good' : 'bad'}_description${duration > 0 ? '_over_time' : ''}`
+  const baseVariant = `${good ? 'good' : 'bad'}_description`
+  const templateText = local(
+    template[`${variant}_en`] || template[`${baseVariant}_en`],
+    template[`${variant}_zh_cn`] || template[`${baseVariant}_zh_cn`],
+    template[`${variant}_zh_tw`] || template[`${baseVariant}_zh_tw`],
+  )
+  if (!templateText.en) return null
+  const useOwnerLevel = Boolean(propertyValue('USEOWNERLEVEL'))
+  const scalingGraph = useOwnerLevel ? clean(templateProperty('GRAPH1')).toUpperCase() || null : null
+  return {
+    type,
+    name: clean(fallback.effect_name || propertyValue('NAME')),
+    displayName: skillDisplayNames.get(clean(fallback.effect_name || propertyValue('NAME')).toLowerCase()) || null,
+    activation: clean(fallback.activation || propertyValue('ACTIVATION')),
+    damageType: clean(propertyValue('DAMAGE_TYPE') || fallback.damage_type || (templateText.en.includes('[DMGTYPE]') ? 'PHYSICAL' : '')),
+    duration,
+    chance: Number.isFinite(Number(propertyValue('CHANCE') ?? fallback.chance)) ? Number(propertyValue('CHANCE') ?? fallback.chance) : null,
+    min: minimum == null ? null : number(minimum),
+    max: maximum == null ? null : number(maximum),
+    values,
+    useOwnerLevel,
+    template: templateText,
+    precision: number(template.display_precision),
+    precisionMax: template.display_precision_max_value == null ? null : number(template.display_precision_max_value),
+    scalingGraph: scalingGraph && skillGraphs[scalingGraph] ? scalingGraph : null,
+  }
+}
+const collectInlineEffects = (node) => {
+  const effects = []
+  const visit = (current) => {
+    if (current?.node === 'EFFECT') {
+      const properties = Object.fromEntries((current.properties || []).map((property) => [property.name, property]))
+      const effect = skillEffectFromProperties(properties)
+      if (effect) effects.push(effect)
+    }
+    for (const child of current?.children || []) visit(child)
+  }
+  visit(node)
+  return effects
+}
 const skillLevel = (row) => {
-  const effects = (effectsBySkillLevel.get(row.id) || []).filter((effect) => effect.effect_type).map(normalizeRawEffect)
+  const node = JSON.parse(row.node_json || '{}')
+  const affixEffects = (effectsBySkillLevel.get(row.id) || [])
+    .map((effect) => skillEffectFromProperties(JSON.parse(effect.properties_json || '{}'), effect))
+    .filter(Boolean)
+  const effects = [...affixEffects, ...collectInlineEffects(node)]
   return {
     rank: number(row.level),
-    metrics: collectMetrics(JSON.parse(row.node_json || '{}')),
+    metrics: collectMetrics(node),
     effects: [...new Map(effects.map((effect) => [JSON.stringify(effect), effect])).values()],
   }
 }
@@ -300,7 +405,22 @@ const classSkills = Object.entries(skillTreeMap).map(([classId, trees]) => ({
       const kind = index >= 7 ? 'passive' : 'active'
       const row = chooseSkill(title, kind, classGroup[classId])
       const properties = JSON.parse(row.properties_json || '{}')
-      const ranks = (skillLevelsBySkill.get(row.id) || []).map(skillLevel)
+      const unlockLevel = kind === 'passive' ? [1, 7, 14][index - 7] : [1, 7, 14, 21, 28, 35, 42][index]
+      const requirementGraphName = clean(row.requirement_graph).toUpperCase()
+      const manaGraphName = clean(row.mana_cost_graph).toUpperCase()
+      const requirementGraph = skillGraphs[requirementGraphName] || []
+      const manaGraph = skillGraphs[manaGraphName] || []
+      const ranks = (skillLevelsBySkill.get(row.id) || []).map(skillLevel).map((rank) => {
+        const requiredLevel = number(requirementGraph.find(([x]) => x === rank.rank)?.[1], unlockLevel)
+        const graphMana = manaGraph.find(([x]) => x === requiredLevel)?.[1]
+        return {
+          ...rank,
+          requiredLevel,
+          metrics: graphMana == null || rank.metrics.some((metric) => metric.kind === 'manaCost' || metric.kind === 'manaPerSecond')
+            ? rank.metrics
+            : [{ kind: 'manaCost', value: number(graphMana), scalingGraph: manaGraphName }, ...rank.metrics],
+        }
+      })
       const tiers = ['TIER1_DESCRIPTION','TIER2_DESCRIPTION','TIER3_DESCRIPTION']
         .map((name, tierIndex) => ({ rank: [5, 10, 15][tierIndex], text: sourceProperty(row.source_file_id, name) }))
         .filter((tier) => tier.text)
@@ -310,7 +430,7 @@ const classSkills = Object.entries(skillTreeMap).map(([classId, trees]) => ({
         name: local(row.display_name_en, row.display_name_zh_cn, row.display_name_zh_tw),
         description: local(row.base_description_en, row.base_description_zh_cn, row.base_description_zh_tw),
         requirement: sourceProperty(row.source_file_id, 'REQUIREMENT_DESCRIPTION'),
-        level: kind === 'passive' ? [1, 7, 14][index - 7] : [1, 7, 14, 21, 28, 35, 42][index],
+        level: unlockLevel,
         kind,
         maxRank: Math.max(number(row.max_invest_level), ...ranks.map((rank) => rank.rank), 1),
         iconPath: pathForWeb(row.icon_path),
@@ -382,6 +502,12 @@ const write = (name, data) => writeFileSync(resolve(outputDir, name), `${JSON.st
 write('equipment.json', equipment)
 write('spell-books.json', spellBooks)
 write('class-skills.json', classSkills)
+const usedSkillGraphs = new Set(classSkills.flatMap((group) => group.trees.flatMap((tree) => tree.skills.flatMap((skill) =>
+  skill.ranks.flatMap((rank) => [
+    ...rank.effects.map((effect) => effect.scalingGraph),
+    ...rank.metrics.map((metric) => metric.scalingGraph),
+  ].filter(Boolean))))))
+write('skill-graphs.json', Object.fromEntries([...usedSkillGraphs].map((name) => [name, skillGraphs[name]])))
 write('phase-beasts.json', phaseBeasts)
 
 const selectedSkills = classSkills.flatMap((group) => group.trees.flatMap((tree) => tree.skills))

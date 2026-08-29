@@ -12,7 +12,7 @@ import type { ItemCategory, Lang, LocalText, StatKey } from './types'
 type Page = 'home' | 'classes' | 'mechanics' | 'items' | 'builds' | 'gambling' | 'spells' | 'phases'
 type Rarity = 'normal' | 'rare' | 'unique' | 'legendary'
 type SkillKind = 'active' | 'passive'
-type SkillMetricKind = 'weaponDamagePct' | 'chargeScalePct' | 'durationMs' | 'maxTargets' | 'projectiles'
+type SkillMetricKind = 'weaponDamagePct' | 'chargeScalePct' | 'manaCost' | 'manaPerSecond' | 'maxTargets' | 'projectiles'
 
 interface RawEffect {
   type: string
@@ -24,6 +24,12 @@ interface RawEffect {
   min: number | null
   max: number | null
   useOwnerLevel: boolean
+  template?: LocalText | null
+  displayName?: LocalText | null
+  values?: Record<string, number | null>
+  precision?: number
+  precisionMax?: number | null
+  scalingGraph?: string | null
   text?: LocalText | null
   renderStatus?: string
 }
@@ -35,6 +41,7 @@ interface DbEquipment {
   unitType: string; rarity: Rarity; level: number; requiredLevel: number
   requirements: { stat: Exclude<StatKey, 'none'>; value: number }[]; sockets: number; speed: number | null
   set: LocalText | null; description: LocalText | null; iconPath: string | null
+  setInternalName: string | null
   maxSockets: number | null; blockChance: number | null; minimumDropLevel: number | null; maximumDropLevel: number | null
   classRequirement: string | null; armor: Record<string, [number, number]>; damage: Record<string, [number, number]>
   baseValues: {damage:[number,number] | null; armor:[number,number] | null}
@@ -45,7 +52,7 @@ interface DbSpellBook {
   id: string; name: LocalText; family: LocalText; tier: number; school: 'offense'|'defense'|'summon'|'utility'
   level: number; requiredLevel: number; description: LocalText; iconPath: string | null; sourceFile: string
 }
-interface DbSkillRank { rank:number; metrics:{kind:SkillMetricKind;value:number}[]; effects:RawEffect[] }
+interface DbSkillRank { rank:number; requiredLevel:number; metrics:{kind:SkillMetricKind;value:number;scalingGraph?:string|null}[]; effects:RawEffect[] }
 interface DbClassSkill {
   id:string; slug:string; name:LocalText; description:LocalText; requirement:LocalText|null; level:number; kind:SkillKind
   maxRank:number; iconPath:string|null; cooldownMs:number|null; range:number|null
@@ -59,10 +66,11 @@ interface DbMeta {
   counts:{equipment:number;enrichedEquipment:number;itemEffects:number;spellBooks:number;localizedSpellBooks:number;classSkills:number;skillRanks:number;phaseChallenges:number;icons:number}
   gaps:Record<string,number>
 }
-interface SiteData { equipment:DbEquipment[]; spellBooks:DbSpellBook[]; classSkills:DbClassGroup[]; phaseBeasts:DbPhaseBeast[]; meta:DbMeta|null }
+type SkillGraphs = Record<string, [number, number][]>
+interface SiteData { equipment:DbEquipment[]; spellBooks:DbSpellBook[]; classSkills:DbClassGroup[]; skillGraphs:SkillGraphs; phaseBeasts:DbPhaseBeast[]; meta:DbMeta|null }
 interface SkillFocus { classId:string; skillId:string }
 
-const emptyData:SiteData={equipment:[],spellBooks:[],classSkills:[],phaseBeasts:[],meta:null}
+const emptyData:SiteData={equipment:[],spellBooks:[],classSkills:[],skillGraphs:{},phaseBeasts:[],meta:null}
 const statLabels:Record<StatKey,string>={str:'STR',dex:'DEX',foc:'FOC',vit:'VIT',none:'—'}
 const text=(en:string,zhCN:string,zhTW=zhCN):LocalText=>({en,zhCN,zhTW})
 const copy=(lang:Lang,zhCN:string,en:string,zhTW=zhCN)=>lang==='en'?en:lang==='zh-TW'?zhTW:zhCN
@@ -101,9 +109,10 @@ function App(){
       fetch(`${base}data/equipment.json`).then(r=>r.json()),
       fetch(`${base}data/spell-books.json`).then(r=>r.json()),
       fetch(`${base}data/class-skills.json`).then(r=>r.json()),
+      fetch(`${base}data/skill-graphs.json`).then(r=>r.json()),
       fetch(`${base}data/phase-beasts.json`).then(r=>r.json()),
       fetch(`${base}data/meta.json`).then(r=>r.json()),
-    ]).then(([equipment,spellBooks,classSkills,phaseBeasts,meta])=>setSiteData({equipment,spellBooks,classSkills,phaseBeasts,meta})).catch(()=>setDataError(true))
+    ]).then(([equipment,spellBooks,classSkills,skillGraphs,phaseBeasts,meta])=>setSiteData({equipment,spellBooks,classSkills,skillGraphs,phaseBeasts,meta})).catch(()=>setDataError(true))
   },[])
   useEffect(()=>{
     const onHash=()=>setPage(pageFromHash())
@@ -139,7 +148,7 @@ function App(){
     {dataError&&<div className="data-error"><Info size={15}/>{copy(lang,'数据文件加载失败，请刷新页面。','Data files failed to load. Please refresh.','資料檔案載入失敗，請重新整理頁面。')}</div>}
     <main>
       {page==='home'&&<Home lang={lang} go={go} onSearch={()=>setSearchOpen(true)} onClass={openClass} data={siteData}/>}
-      {page==='classes'&&<ClassesPage lang={lang} classId={classId} setClassId={setClassId} classSkills={siteData.classSkills} focus={skillFocus}/>}
+      {page==='classes'&&<ClassesPage lang={lang} classId={classId} setClassId={setClassId} classSkills={siteData.classSkills} skillGraphs={siteData.skillGraphs} focus={skillFocus}/>}
       {page==='mechanics'&&<MechanicsPage lang={lang}/>}
       {page==='items'&&<ItemsPage lang={lang} items={siteData.equipment}/>}
       {page==='builds'&&<BuildsPage lang={lang} items={siteData.equipment}/>}
@@ -190,7 +199,7 @@ function StatPill({stat}:{stat:StatKey}){return stat==='none'?<span className="s
 function RichText({value}:{value:string}){return <>{value.split('**').map((part,index)=>index%2?<strong key={index}>{part}</strong>:part)}</>}
 function Loading({lang}:{lang:Lang}){return <div className="loading"><span/><p>{tr(lang,'loading')}</p></div>}
 
-function ClassesPage({lang,classId,setClassId,classSkills,focus}:{lang:Lang;classId:string;setClassId:(id:string)=>void;classSkills:DbClassGroup[];focus:SkillFocus|null}){
+function ClassesPage({lang,classId,setClassId,classSkills,skillGraphs,focus}:{lang:Lang;classId:string;setClassId:(id:string)=>void;classSkills:DbClassGroup[];skillGraphs:SkillGraphs;focus:SkillFocus|null}){
   const hero=classes.find(item=>item.id===classId)??classes[0]
   const generated=classSkills.find(item=>item.classId===hero.id)
   const trees=hero.trees.map(tree=>({...tree,skills:generated?.trees.find(item=>item.treeId===tree.id)?.skills||[]}))
@@ -212,22 +221,25 @@ function ClassesPage({lang,classId,setClassId,classSkills,focus}:{lang:Lang;clas
       <section className="class-overview"><div><span className="label">{hero.name.en}</span><h2>{pick(hero.name,lang)}</h2><p>{pick(hero.description,lang)}</p></div></section>
       {!selected?<Loading lang={lang}/>:<div className="skill-layout"><section><div className="section-row"><SectionTitle eyebrow={tr(lang,'skillTrees')} title={pick(tree.name,lang)}/><div className="segmented tree-tabs">{trees.map(item=><button className={item.id===tree.id?'active':''} onClick={()=>setTreeId(item.id)} key={item.id}>{pick(item.name,lang)} <small>{item.skills.length}</small></button>)}</div></div>
         <div className="skill-table">{tree.skills.map(skill=><button key={skill.id} className={selected.id===skill.id?'active':''} onClick={()=>setSelectedId(skill.id)}><img src={asset(skill.iconPath)} alt=""/><span><b>{pick(skill.name,lang)}</b><small>{skill.kind==='active'?tr(lang,'active'):tr(lang,'passive')} · {tr(lang,'unlocks')} {skill.level}</small></span><ChevronRight size={15}/></button>)}</div>
-      </section><SkillPanel key={selected.id} skill={selected} lang={lang}/></div>}
+      </section><SkillPanel key={selected.id} skill={selected} lang={lang} skillGraphs={skillGraphs}/></div>}
     </div>
   </>
 }
 
-function SkillPanel({skill,lang}:{skill:DbClassSkill;lang:Lang}){
+function SkillPanel({skill,lang,skillGraphs}:{skill:DbClassSkill;lang:Lang;skillGraphs:SkillGraphs}){
   const [rank,setRank]=useState(1)
+  const [characterLevel,setCharacterLevel]=useState(100)
   const selectedRank=skill.ranks.find(item=>item.rank===rank)||skill.ranks[0]
+  const hasLevelScaling=Boolean(selectedRank?.effects.some(effect=>effect.scalingGraph)||selectedRank?.metrics.some(metric=>metric.scalingGraph))
+  useEffect(()=>{if(selectedRank)setCharacterLevel(selectedRank.requiredLevel||skill.level)},[selectedRank?.rank,skill.level])
   return <aside className="skill-panel">
     <div className="skill-heading"><img src={asset(skill.iconPath)} alt=""/><div><span className="label">{skill.kind==='active'?tr(lang,'active'):tr(lang,'passive')} · {tr(lang,'unlocks')} {skill.level}</span><h2>{pick(skill.name,lang)}</h2>{originalName(skill.name,lang)&&<small className="original-name">{skill.name.en}</small>}</div></div>
     <p className="skill-description">{pick(skill.description,lang)}</p>
     {skill.requirement&&<div className="skill-requirement"><b>{tr(lang,'requirement')}</b><span>{pick(skill.requirement,lang)}</span></div>}
-    {skill.ranks.length>0&&<section className="rank-section"><div className="rank-control"><label htmlFor={`rank-${skill.id}`}>{tr(lang,'rank')} <strong>{rank}</strong> / {skill.maxRank}</label><input id={`rank-${skill.id}`} type="range" min="1" max={skill.maxRank} value={rank} onChange={event=>setRank(Number(event.target.value))}/></div>
+    {skill.ranks.length>0&&<section className="rank-section"><div className="rank-controls"><div className="rank-control"><label htmlFor={`rank-${skill.id}`}>{tr(lang,'rank')} <strong>{rank}</strong> / {skill.maxRank}</label><input id={`rank-${skill.id}`} type="range" min="1" max={skill.maxRank} value={rank} onChange={event=>setRank(Number(event.target.value))}/></div>{hasLevelScaling&&<label className="skill-character-level"><span>{tr(lang,'characterLevel')}</span><input type="number" min={selectedRank?.requiredLevel||1} max="100" value={characterLevel} onChange={event=>setCharacterLevel(Math.max(selectedRank?.requiredLevel||1,Math.min(100,Number(event.target.value)||1)))}/></label>}</div>
       <h3>{tr(lang,'skillValues')}</h3>{selectedRank&&(selectedRank.metrics.length||selectedRank.effects.length)?<>
-        {selectedRank.metrics.length>0&&<div className="skill-metrics">{selectedRank.metrics.map((metric,index)=><div key={`${metric.kind}-${index}`}><span>{tr(lang,metric.kind)}</span><b>{metric.kind==='durationMs'?`${metric.value/1000} ${tr(lang,'seconds')}`:metric.kind==='weaponDamagePct'||metric.kind==='chargeScalePct'?`${metric.value}%`:metric.value}</b></div>)}</div>}
-        {selectedRank.effects.length>0&&<ul className="raw-effect-list">{selectedRank.effects.map((effect,index)=><RawEffectLine key={`${effect.type}-${index}`} effect={effect} lang={lang}/>)}</ul>}
+        {selectedRank.metrics.length>0&&<div className="skill-metrics">{selectedRank.metrics.map((metric,index)=>{const value=metric.scalingGraph?graphValue(skillGraphs[metric.scalingGraph],characterLevel)??metric.value:metric.value;return <div key={`${metric.kind}-${index}`}><span>{tr(lang,metric.kind)}</span><b>{metric.kind==='weaponDamagePct'||metric.kind==='chargeScalePct'?`${value}%`:value}</b></div>})}</div>}
+        {selectedRank.effects.length>0&&<ul className="raw-effect-list">{selectedRank.effects.map((effect,index)=><RawEffectLine key={`${effect.type}-${index}`} effect={effect} lang={lang} playerLevel={characterLevel} skillGraphs={skillGraphs}/>)}</ul>}
       </>:<p className="empty-values">{tr(lang,'noRankValues')}</p>}
     </section>}
     {skill.tiers.length>0&&<section className="tier-bonuses"><h3>{tr(lang,'tierBonuses')}</h3>{skill.tiers.map(tier=><div key={tier.rank}><b>{tr(lang,'rank')} {tier.rank}</b><p>{pick(tier.text,lang)}</p></div>)}</section>}
@@ -244,8 +256,60 @@ const effectNames:Record<string,LocalText>={
   MINIONDAMAGE:text('Minion damage','召唤物伤害','召喚物傷害'), 'DEGRADE ARMOR':text('Armor reduction','护甲降低','護甲降低'), 'KNOCK BACK EFFECT':text('Knockback','击退','擊退'),
 }
 const titleCase=(value:string)=>value.toLowerCase().replace(/\b\w/g,letter=>letter.toUpperCase())
-function RawEffectLine({effect,lang,pieces}:{effect:RawEffect;lang:Lang;pieces?:number}){
+const damageTypeNames:Record<string,LocalText>={
+  ALL:text('All','全部','全部'),PHYSICAL:text('Physical','物理','物理'),FIRE:text('Fire','火焰','火焰'),ICE:text('Ice','冰霜','冰霜'),ELECTRIC:text('Electric','闪电','閃電'),POISON:text('Poison','毒素','毒素'),
+}
+const graphValue=(points:[number,number][]|undefined,level:number)=>{
+  if(!points?.length)return null
+  if(level<=points[0][0])return points[0][1]
+  for(let index=1;index<points.length;index++){
+    const [x,y]=points[index];const [previousX,previousY]=points[index-1]
+    if(level<=x)return previousY+(y-previousY)*(level-previousX)/(x-previousX)
+  }
+  return points.at(-1)?.[1]??null
+}
+const effectNumber=(effect:RawEffect,value:number|null,playerLevel:number,skillGraphs:SkillGraphs,overTime=false)=>{
+  if(value==null)return null
+  const scale=effect.scalingGraph?graphValue(skillGraphs[effect.scalingGraph],playerLevel):null
+  let result=scale==null?value:scale*value/100
+  if(scale!=null&&effect.type==='DAMAGE')result=Math.ceil(Math.abs(result))
+  else if(scale!=null&&effect.type==='ARMOR BONUS')result=Math.floor(Math.abs(result))
+  else result=Math.abs(result)
+  if(overTime&&effect.duration)result=Math.ceil(result)*effect.duration
+  const precision=Math.max(0,effect.precision??0)
+  return Number(result.toFixed(precision)).toLocaleString('en-US',{maximumFractionDigits:precision})
+}
+const effectRange=(effect:RawEffect,playerLevel:number,skillGraphs:SkillGraphs,overTime=false)=>{
+  const minimum=effectNumber(effect,effect.min,playerLevel,skillGraphs,overTime)
+  const maximum=effectNumber(effect,effect.max,playerLevel,skillGraphs,overTime)
+  return minimum===maximum||maximum==null?minimum:minimum==null?maximum:`${minimum}–${maximum}`
+}
+const effectDuration=(duration:number,lang:Lang)=>lang==='en'?`${duration} sec.`:`${duration}秒`
+const renderSkillEffect=(effect:RawEffect,lang:Lang,playerLevel:number,skillGraphs:SkillGraphs)=>{
+  if(!effect.template)return null
+  const values=effect.values||{}
+  const auxiliary=(slot:number)=>effectNumber(effect,values[String(slot)]??null,playerLevel,{},false)??'—'
+  const thirdAndFourth=auxiliary(3)===auxiliary(4)?auxiliary(3):`${auxiliary(3)}–${auxiliary(4)}`
+  const damage=effect.damageType?(damageTypeNames[effect.damageType.toUpperCase()]?pick(damageTypeNames[effect.damageType.toUpperCase()],lang):titleCase(effect.damageType)):''
+  const name=effect.displayName?pick(effect.displayName,lang):effect.name
+  const overTime=effect.duration!=null&&effect.duration>0&&(effect.type==='DAMAGE'||effect.type==='DAMAGE CHANCE')
+  return pick(effect.template,lang)
+    .replaceAll('[VALUE_OT]',effectRange(effect,playerLevel,skillGraphs,true)??'—')
+    .replaceAll('[VALUE1ASDURATION]',effectDuration(Math.abs(effect.min??0),lang))
+    .replaceAll('[VALUE3AND4]',thirdAndFourth)
+    .replaceAll('[VALUE5]',auxiliary(5))
+    .replaceAll('[VALUE3]',auxiliary(3))
+    .replaceAll('[VALUE]',effectRange(effect,playerLevel,skillGraphs,overTime)??'—')
+    .replaceAll('[DURATION]',effectDuration(effect.duration??0,lang))
+    .replaceAll('[DMGTYPE]',damage)
+    .replaceAll('[NAME]',name)
+    .replace(/[ \t]{2,}/g,' ')
+    .trim()
+}
+function RawEffectLine({effect,lang,pieces,playerLevel=100,skillGraphs={}}:{effect:RawEffect;lang:Lang;pieces?:number;playerLevel?:number;skillGraphs?:SkillGraphs}){
   if(effect.text)return <li>{pieces!=null&&<b className="piece-count">{pieces} {copy(lang,'件','pieces','件')}</b>}<span><strong>{pick(effect.text,lang)}</strong></span></li>
+  const rendered=renderSkillEffect(effect,lang,playerLevel,skillGraphs)
+  if(rendered)return <li><span><strong>{rendered}</strong>{effect.scalingGraph&&<small>{copy(lang,`角色等级 ${playerLevel}`,`Character level ${playerLevel}`,`角色等級 ${playerLevel}`)}</small>}</span></li>
   const label=effectNames[effect.type]?.en||titleCase(effect.type)
   const rawValue=effect.min==null&&effect.max==null?null:effect.min===effect.max?`${effect.min}`:`${effect.min}–${effect.max}`
   const percent=/PERCENT|CHANCE|DODGE|SHOCK|FREEZE|STUN|BURN|POISON|INTERRUPT/.test(effect.type)
