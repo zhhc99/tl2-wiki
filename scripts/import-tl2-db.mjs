@@ -48,13 +48,14 @@ const itemAttributes = groupBy(query(`
   SELECT item_id, name, value_text, value_integer, value_real
   FROM item_attributes
 `), (row) => row.item_id)
-const rawItemEffects = groupBy(query(`
-  SELECT ia.item_id, ia.affix_name, ae.effect_name, ae.effect_type, ae.activation,
-    ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json,
-    ae.rendered_description_en, ae.rendered_description_zh_cn, ae.rendered_description_zh_tw
-  FROM item_affixes ia
-  JOIN affix_effects ae ON ae.affix_id=ia.resolved_affix_id
-  ORDER BY ia.item_id, ia.inherited_depth, ia.ordinal, ae.ordinal
+const itemDisplayEffects = groupBy(query(`
+  SELECT ide.item_id, ide.ordinal, ide.effect_name, ide.effect_type,
+    ide.text_en, ide.text_zh_cn, ide.text_zh_tw, ide.render_status, ide.values_json,
+    ae.activation, ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json
+  FROM item_display_effects ide
+  JOIN affix_effects ae ON ae.id=ide.affix_effect_id
+  WHERE ide.is_player_visible=1
+  ORDER BY ide.item_id, ide.ordinal
 `), (row) => row.item_id)
 const rawSetEffects = groupBy(query(`
   SELECT sets.internal_name AS set_name, sb.required_count, ae.effect_name, ae.effect_type,
@@ -91,6 +92,26 @@ const normalizeRawEffect = (row) => {
     ) } : {}),
   }
 }
+const cleanDisplayEffectText = (value) => clean(value)
+  .replace(/\s*[（(][^()（）]*<stat:[^>]+>[^()（）]*[)）]\s*$/i, '')
+  .trim()
+const normalizeDisplayEffect = (row) => {
+  const effect = normalizeRawEffect(row)
+  const values = JSON.parse(row.values_json || '{}')
+  const minimum = values['1'] ?? effect.min
+  const maximum = values['2'] ?? values['1'] ?? effect.max
+  return {
+    ...effect,
+    min: minimum == null ? null : number(minimum),
+    max: maximum == null ? null : number(maximum),
+    text: local(
+      cleanDisplayEffectText(row.text_en),
+      cleanDisplayEffectText(row.text_zh_cn),
+      cleanDisplayEffectText(row.text_zh_tw),
+    ),
+    renderStatus: clean(row.render_status),
+  }
+}
 
 const categoryFor = (category, subtype) => {
   if (category === 'weapon') return 'weapon'
@@ -121,7 +142,7 @@ const equipment = itemRows.map((row) => {
     row.set_display_name_zh_cn,
     row.set_display_name_zh_tw,
   ) : null
-  const rawEffects = (rawItemEffects.get(row.id) || []).map(normalizeRawEffect).filter((effect) => effect.type)
+  const effects = (itemDisplayEffects.get(row.id) || []).map(normalizeDisplayEffect).filter((effect) => effect.type)
   const rawBonuses = (rawSetEffects.get(String(row.set_name || '').toLowerCase()) || []).map((bonus) => ({
     pieces: number(bonus.required_count),
     ...normalizeRawEffect(bonus),
@@ -160,8 +181,7 @@ const equipment = itemRows.map((row) => {
       damage: baseDamageMin == null && baseDamageMax == null ? null : [baseDamageMin, baseDamageMax],
       armor: baseArmorMin == null && baseArmorMax == null ? null : [baseArmorMin, baseArmorMax],
     },
-    effects: (enrichment?.effects || []).map((effect) => ({ text: local(effect.text, null, null), value: effect.value })),
-    rawEffects,
+    effects,
     setBonuses: (enrichment?.setBonuses || []).map((bonus) => ({ pieces: bonus.pieces, text: local(bonus.text, null, null), value: bonus.value })),
     rawSetBonuses: rawBonuses,
     exactEnrichment: Boolean(enrichment),
@@ -372,7 +392,7 @@ const meta = {
   counts: {
     equipment: equipment.length,
     enrichedEquipment: equipment.filter((item) => item.exactEnrichment).length,
-    itemEffects: equipment.reduce((sum, item) => sum + (item.rawEffects.length || item.effects.length), 0),
+    itemEffects: equipment.reduce((sum, item) => sum + item.effects.length, 0),
     spellBooks: spellBooks.length,
     localizedSpellBooks: spellBooks.filter((spell) => spell.name.zhCN !== spell.name.en || spell.name.zhTW !== spell.name.en).length,
     classSkills: selectedSkills.length,
@@ -383,8 +403,7 @@ const meta = {
   gaps: {
     equipmentWithoutDescription: equipment.filter((item) => !item.description).length,
     equipmentEffectsWithoutOfficialChinese: equipment.reduce((sum, item) => {
-      const effects = item.rawEffects.length ? item.rawEffects : item.effects
-      return sum + effects.filter((effect) => !effect.text || effect.text.zhCN === effect.text.en).length
+      return sum + item.effects.filter((effect) => effect.text.zhCN === effect.text.en).length
     }, 0),
     spellBookNamesWithoutOfficialChinese: spellBooks.filter((spell) => spell.name.zhCN === spell.name.en).length,
     spellBooksWithoutOfficialChineseDescription: spellBooks.filter((spell) => spell.description.zhCN === spell.description.en).length,

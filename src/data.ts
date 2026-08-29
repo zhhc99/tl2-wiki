@@ -54,15 +54,15 @@ export const statInfo: StatInfo[] = [
   ]},
   { key: 'dex', name: t('Dexterity', '敏捷', '敏捷'), effects: [
     t('Each point of **Dexterity** adds about **0.2% critical-hit chance** and **0.2% dodge chance**.', '每点**敏捷**约增加 **0.2% 暴击几率**和 **0.2% 闪避几率**。', '每點**敏捷**約增加 **0.2% 爆擊機率**和 **0.2% 閃避機率**。'),
-    t('For either chance, the exact contribution is **Dexterity × (0.2002 − 0.0002 × Dexterity)%**. Each new point is worth less than the previous one, and the contribution from Dexterity is capped at **50%**.', '两项几率各自的准确加成为 **敏捷 ×（0.2002 − 0.0002 × 敏捷）%**。投入越多，每点收益越低；敏捷对每项几率最多贡献 **50%**。', '兩項機率各自的準確加成為 **敏捷 ×（0.2002 − 0.0002 × 敏捷）%**。投入越多，每點收益越低；敏捷對每項機率最多貢獻 **50%**。'),
+    t('For either chance, the exact contribution is **Dexterity × (0.2002 − 0.0002 × Dexterity)%**. Each new point is worth less than the previous one, and the contribution from Dexterity is capped at **50%**.', '两项几率各自的准确加成为 **敏捷 ×（0.2002 − 0.0002 × 敏捷）%**。投入越多，每点收益越低；敏捷对每项几率最多贡献 **50%**。', '兩項機率的實際加成皆為 **敏捷 ×（0.2002 − 0.0002 × 敏捷）%**。點數越高，每點增加幅度越小；敏捷對每項機率最多提供 **50%**。'),
   ]},
   { key: 'foc', name: t('Focus', '专注', '專注'), effects: [
     t('Each point of **Focus** adds **0.5 maximum Mana** and **0.5% elemental damage**.', '每点**专注**增加 **0.5 点法力上限**和 **0.5% 元素伤害**。', '每點**專注**增加 **0.5 點法力上限**和 **0.5% 元素傷害**。'),
     t('Focus also increases the displayed damage of skills that use a fixed damage value, including fixed physical damage.', '使用固定伤害数值的技能也会随专注提高伤害，其中包括固定物理伤害。', '使用固定傷害數值的技能也會隨專注提高傷害，其中包括固定物理傷害。'),
-    t('Execute chance uses the same diminishing curve: **Focus × (0.2002 − 0.0002 × Focus)%**, capped at **50%** from Focus.', '处决几率使用同样的递减曲线：**专注 ×（0.2002 − 0.0002 × 专注）%**；专注最多贡献 **50%**。', '處決機率使用同樣的遞減曲線：**專注 ×（0.2002 − 0.0002 × 專注）%**；專注最多貢獻 **50%**。'),
+    t('Execute chance uses the same diminishing curve: **Focus × (0.2002 − 0.0002 × Focus)%**, capped at **50%** from Focus.', '处决几率使用同样的递减曲线：**专注 ×（0.2002 − 0.0002 × 专注）%**；专注最多贡献 **50%**。', '處決機率採用相同的遞減公式：**專注 ×（0.2002 − 0.0002 × 專注）%**；專注最多提供 **50%**。'),
   ]},
   { key: 'vit', name: t('Vitality', '体力', '體力'), effects: [
     t('Each point of **Vitality** adds **3.6 maximum Health** and increases total Armor by **0.25%**.', '每点**体力**增加 **3.6 点生命上限**，并使总护甲提高 **0.25%**。', '每點**體力**增加 **3.6 點生命上限**，並使總護甲提高 **0.25%**。'),
-    t('With a shield equipped, each point of **Vitality** initially adds about **0.2% block chance**. The exact contribution is **Vitality × (0.2002 − 0.0002 × Vitality)%**, with diminishing returns and a **50%** cap from Vitality.', '装备盾牌时，每点**体力**起初约增加 **0.2% 格挡几率**。准确加成为 **体力 ×（0.2002 − 0.0002 × 体力）%**；投入越多，每点收益越低，体力最多贡献 **50% 格挡几率**。', '裝備盾牌時，每點**體力**起初約增加 **0.2% 格擋機率**。準確加成為 **體力 ×（0.2002 − 0.0002 × 體力）%**；投入越多，每點收益越低，體力最多貢獻 **50% 格擋機率**。'),
+    t('With a shield equipped, each point of **Vitality** initially adds about **0.2% block chance**. The exact contribution is **Vitality × (0.2002 − 0.0002 × Vitality)%**, with diminishing returns and a **50%** cap from Vitality.', '装备盾牌时，每点**体力**起初约增加 **0.2% 格挡几率**。准确加成为 **体力 ×（0.2002 − 0.0002 × 体力）%**；投入越多，每点收益越低，体力最多贡献 **50% 格挡几率**。', '裝備盾牌時，每點**體力**起初約增加 **0.2% 格擋機率**。實際加成為 **體力 ×（0.2002 − 0.0002 × 體力）%**；點數越高，每點增加幅度越小，體力最多提供 **50% 格擋機率**。'),
   ]},
 ]
