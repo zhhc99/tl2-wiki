@@ -95,9 +95,8 @@ const categoryFor = (category, subtype) => {
 const rarityFor = (row) => {
   const unit = clean(row.unit_type).toUpperCase()
   if (unit.includes('LEGENDARY')) return 'legendary'
-  if (row.set_name) return 'set'
   if (unit.includes('UNIQUE')) return 'unique'
-  if (unit.includes('MAGIC') || number(row.rarity) >= 10) return 'rare'
+  if (unit.includes('MAGIC')) return 'rare'
   return 'normal'
 }
 

@@ -53,7 +53,7 @@ export const statInfo: StatInfo[] = [
     t('Each point also adds **0.4% critical-hit damage**. Critical hits start at 150% of normal damage.', '每点还增加 **0.4% 暴击伤害**；暴击默认造成普通伤害的 150%。', '每點還增加 **0.4% 爆擊傷害**；爆擊預設造成普通傷害的 150%。'),
   ]},
   { key: 'dex', name: t('Dexterity', '敏捷', '敏捷'), effects: [
-    t('Each point of **Dexterity** adds about **0.2 percentage points of critical-hit chance** and **0.2 percentage points of dodge chance** at low values.', '每点**敏捷**约提高 **0.2 个百分点的暴击几率**和 **0.2 个百分点的闪避几率**。', '每點**敏捷**約提高 **0.2 個百分點的爆擊機率**和 **0.2 個百分點的閃避機率**。'),
+    t('Each point of **Dexterity** adds about **0.2% critical-hit chance** and **0.2% dodge chance**.', '每点**敏捷**约增加 **0.2% 暴击几率**和 **0.2% 闪避几率**。', '每點**敏捷**約增加 **0.2% 爆擊機率**和 **0.2% 閃避機率**。'),
     t('For either chance, the exact contribution is **Dexterity × (0.2002 − 0.0002 × Dexterity)%**. Each new point is worth less than the previous one, and the contribution from Dexterity is capped at **50%**.', '两项几率各自的准确加成为 **敏捷 ×（0.2002 − 0.0002 × 敏捷）%**。投入越多，每点收益越低；敏捷对每项几率最多贡献 **50%**。', '兩項機率各自的準確加成為 **敏捷 ×（0.2002 − 0.0002 × 敏捷）%**。投入越多，每點收益越低；敏捷對每項機率最多貢獻 **50%**。'),
   ]},
   { key: 'foc', name: t('Focus', '专注', '專注'), effects: [
@@ -63,6 +63,6 @@ export const statInfo: StatInfo[] = [
   ]},
   { key: 'vit', name: t('Vitality', '体力', '體力'), effects: [
     t('Each point of **Vitality** adds **3.6 maximum Health** and increases total Armor by **0.25%**.', '每点**体力**增加 **3.6 点生命上限**，并使总护甲提高 **0.25%**。', '每點**體力**增加 **3.6 點生命上限**，並使總護甲提高 **0.25%**。'),
-    t('With a shield equipped, each point initially adds about **0.2 percentage points of block chance**. The exact contribution is **Vitality × (0.2002 − 0.0002 × Vitality)%**, with diminishing returns and a **50%** cap from Vitality.', '装备盾牌时，每点**体力**起初约提高 **0.2 个百分点的格挡几率**。准确加成为 **体力 ×（0.2002 − 0.0002 × 体力）%**；投入越多，每点收益越低，体力最多贡献 **50% 格挡几率**。', '裝備盾牌時，每點**體力**起初約提高 **0.2 個百分點的格擋機率**。準確加成為 **體力 ×（0.2002 − 0.0002 × 體力）%**；投入越多，每點收益越低，體力最多貢獻 **50% 格擋機率**。'),
+    t('With a shield equipped, each point of **Vitality** initially adds about **0.2% block chance**. The exact contribution is **Vitality × (0.2002 − 0.0002 × Vitality)%**, with diminishing returns and a **50%** cap from Vitality.', '装备盾牌时，每点**体力**起初约增加 **0.2% 格挡几率**。准确加成为 **体力 ×（0.2002 − 0.0002 × 体力）%**；投入越多，每点收益越低，体力最多贡献 **50% 格挡几率**。', '裝備盾牌時，每點**體力**起初約增加 **0.2% 格擋機率**。準確加成為 **體力 ×（0.2002 − 0.0002 × 體力）%**；投入越多，每點收益越低，體力最多貢獻 **50% 格擋機率**。'),
   ]},
 ]

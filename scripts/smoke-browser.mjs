@@ -1,6 +1,7 @@
 const endpoint = process.argv[2] || 'http://127.0.0.1:9222'
+const siteUrl = process.argv[3] || 'http://127.0.0.1:5173'
 const targets = await fetch(`${endpoint}/json`).then(response => response.json())
-const target = targets.find(item => item.type === 'page' && item.url.includes('127.0.0.1:5173'))
+const target = targets.find(item => item.type === 'page' && item.url.startsWith(siteUrl))
 if (!target) throw new Error('TL2 Wiki page target not found')
 
 const socket = new WebSocket(target.webSocketDebuggerUrl)
@@ -61,7 +62,21 @@ await evaluate(`document.querySelector('.data-table tbody tr')?.click()`)
 await wait(100)
 const effectDetail = await evaluate(`document.querySelector('.effect-list')?.textContent.includes('Critical Hit Chance')`)
 if (!effectDetail) throw new Error('Imported equipment effects were not shown in the detail drawer')
-await evaluate(`document.querySelector('.drawer-close')?.click(); location.hash='#/phases'`)
+await evaluate(`document.querySelector('.drawer-close')?.click()`)
+await setSearch('Ascendant Armor')
+await wait(150)
+const independentSetTag = await evaluate(`(() => {
+  const row=document.querySelector('.data-table tbody tr');
+  return Boolean(row?.querySelector('.rarity.unique') && row?.querySelector('.set-tag') && row?.querySelector('.rarity-border.unique'))
+})()`)
+if (!independentSetTag) throw new Error('Set membership replaced rarity or the icon rarity border is missing')
+const styledSelects = await evaluate(`(() => {
+  const controls=[...document.querySelectorAll('.data-toolbar .select-control')];
+  const rarity=controls[1]?.querySelector('select');
+  return controls.length===3 && getComputedStyle(rarity).appearance==='none' && ![...rarity.options].some(option=>option.value==='set')
+})()`)
+if (!styledSelects) throw new Error('Equipment filters are not using the shared styled select control')
+await evaluate(`location.hash='#/phases'`)
 await wait(250)
 const phasePage = await evaluate(`(() => { const image=document.querySelector('.phase-guide img'); return Boolean(image?.complete && image.naturalWidth>0 && document.querySelectorAll('.phase-card').length===6 && document.querySelectorAll('.challenge-list section').length===15 && document.body.textContent.includes('接近圖騰')) })()`)
 if (!phasePage) throw new Error('Phase Beast guide, areas or challenges did not render')
@@ -72,4 +87,4 @@ if (!mobileFits) throw new Error('Mobile layout has horizontal overflow')
 await call('Emulation.clearDeviceMetricsOverride')
 
 socket.close()
-console.log('Browser smoke test passed: data, shortcuts, language, effect search/detail, Phase Beast guide and mobile fit')
+console.log('Browser smoke test passed: data, shortcuts, language, rarity/set styling, styled filters, effect search/detail, Phase Beast guide and mobile fit')
