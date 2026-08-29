@@ -1,34 +1,56 @@
 import type { Lang, LocalText } from './types'
 
-export const pick = (value: LocalText, lang: Lang) => value[lang]
+export const pick = (value: LocalText, lang: Lang) => lang === 'zh-CN' ? value.zhCN : lang === 'zh-TW' ? value.zhTW : value.en
+export const isChinese = (lang: Lang) => lang !== 'en'
 
 export const localeOptions: { code: Lang; label: string; htmlLang: string }[] = [
-  { code: 'zh', label: '简体中文', htmlLang: 'zh-CN' },
+  { code: 'zh-CN', label: '简体中文', htmlLang: 'zh-CN' },
+  { code: 'zh-TW', label: '繁體中文', htmlLang: 'zh-TW' },
   { code: 'en', label: 'English', htmlLang: 'en-US' },
 ]
 
-const ui = {
-  en: {
-    navHome:'Home', navClasses:'Classes', navMechanics:'Mechanics', navItems:'Equipment', navSpells:'Spell Books', navPhases:'Phase Beasts',
-    search:'Search TL2 Wiki…', classesTitle:'Classes', skillTrees:'Skill trees', active:'Active', passive:'Passive', unlocks:'Level',
-    mechTitle:'Mechanics', triggerGuide:'Hits and effects', triggerIntro:'Start with the source of the damage. Basic attacks, weapon-DPS skills, flat skill damage, damage over time and minions each carry different effects.',
-    event:'Damage source', canCrit:'Critical hit', canSteal:'Life / mana steal', canProc:'Weapon effects', weaponHit:'Basic weapon attack', weaponSkill:'Skill using weapon DPS', flatSkill:'Flat skill damage', dot:'Damage over time', minion:'Minion or deployable', yes:'Yes', limited:'Depends on the skill', no:'No',
-    itemsTitle:'Equipment', all:'All', weapon:'Weapons', armorCat:'Armor', trinket:'Trinkets', petGear:'Pet gear', socketable:'Socketables', allRarity:'All rarities', level:'Item level', required:'Requires level', sockets:'Sockets', itemsFound:'items',
-    spellsTitle:'Spell books', offense:'Offense', defense:'Defense', summon:'Summon', utility:'Utility',
-    phasesTitle:'Phase Beasts', act:'Act', reward:'Reward', allActs:'All acts',
-    noResults:'No matching results.', close:'Close',
-  },
-  zh: {
-    navHome:'首页', navClasses:'职业', navMechanics:'机制', navItems:'装备', navSpells:'技能书', navPhases:'相位兽',
-    search:'搜索 TL2 Wiki…', classesTitle:'职业', skillTrees:'技能树', active:'主动', passive:'被动', unlocks:'解锁等级',
-    mechTitle:'游戏机制', triggerGuide:'命中与效果', triggerIntro:'先看伤害来自哪里。普通武器攻击、带武器伤害的技能、固定技能伤害、持续伤害和召唤物，能够携带的效果各不相同。',
-    event:'伤害来源', canCrit:'暴击', canSteal:'生命 / 法力吸取', canProc:'武器效果', weaponHit:'普通武器攻击', weaponSkill:'使用武器 DPS 的技能', flatSkill:'固定技能伤害', dot:'持续伤害', minion:'召唤物或部署物', yes:'可以', limited:'取决于技能', no:'不可以',
-    itemsTitle:'装备', all:'全部', weapon:'武器', armorCat:'护甲', trinket:'饰品', petGear:'宠物装备', socketable:'镶嵌物', allRarity:'全部稀有度', level:'装备等级', required:'需求等级', sockets:'孔数', itemsFound:'件装备',
-    spellsTitle:'技能书', offense:'攻击', defense:'防御', summon:'召唤', utility:'辅助',
-    phasesTitle:'相位兽', act:'第', reward:'奖励', allActs:'全部幕',
-    noResults:'没有匹配内容。', close:'关闭',
-  },
-} as const
+const en = {
+  navHome:'Home', navClasses:'Classes', navMechanics:'Mechanics', navItems:'Equipment', navSpells:'Spell Books', navPhases:'Phase Beasts',
+  search:'Search TL2 Wiki…', classesTitle:'Classes', skillTrees:'Skill trees', active:'Active', passive:'Passive', unlocks:'Unlock level',
+  rank:'Rank', skillValues:'Rank values', tierBonuses:'Tier bonuses', requirement:'Requirement', cooldown:'Cooldown', range:'Range',
+  weaponDamagePct:'Weapon damage', chargeScalePct:'Charge gained', durationMs:'Duration', maxTargets:'Maximum targets', projectiles:'Projectiles',
+  effect:'Effect', value:'Value', perLevel:'× character level', seconds:'sec', noRankValues:'No separate numeric effect is defined for this rank.',
+  mechTitle:'Mechanics', triggerGuide:'Hits and effects', triggerIntro:'The damage source determines what it can trigger. A weapon attack, a skill based on weapon DPS, fixed skill damage, damage over time and a minion do not follow the same rules.',
+  event:'Damage source', canCrit:'Critical hit', canSteal:'Life / mana steal', canProc:'Weapon effects', weaponHit:'Basic weapon attack', weaponSkill:'Skill using weapon DPS', flatSkill:'Fixed skill damage', dot:'Damage over time', minion:'Minion or deployable', yes:'Yes', limited:'Depends on the skill', no:'No',
+  itemsTitle:'Equipment', all:'All', weapon:'Weapons', armorCat:'Armor', trinket:'Trinkets', petGear:'Pet gear', socketable:'Socketables', allRarity:'All rarities', level:'Item level', required:'Requires level', sockets:'Sockets', itemsFound:'items',
+  spellsTitle:'Spell books', offense:'Offense', defense:'Defense', summon:'Summon', utility:'Utility',
+  phasesTitle:'Phase Beasts', act:'Act', allActs:'All acts', objective:'Objective',
+  noResults:'No matching results.', close:'Close', chooseLanguage:'Choose language', menu:'Menu', loading:'Loading data…',
+}
 
-export type UIKey = keyof typeof ui.en
+const zhCN: typeof en = {
+  navHome:'首页', navClasses:'职业', navMechanics:'机制', navItems:'装备', navSpells:'技能书', navPhases:'相位兽',
+  search:'搜索 TL2 Wiki…', classesTitle:'职业', skillTrees:'技能树', active:'主动', passive:'被动', unlocks:'解锁等级',
+  rank:'技能等级', skillValues:'本级数值', tierBonuses:'阶段奖励', requirement:'使用条件', cooldown:'冷却时间', range:'范围',
+  weaponDamagePct:'武器伤害', chargeScalePct:'怒气获得', durationMs:'持续时间', maxTargets:'最多目标', projectiles:'投射物数量',
+  effect:'效果', value:'数值', perLevel:'× 角色等级', seconds:'秒', noRankValues:'这一等级没有单独定义的数值效果。',
+  mechTitle:'游戏机制', triggerGuide:'命中与效果', triggerIntro:'能否暴击、吸取或触发武器效果，取决于伤害来自哪里。普通攻击、使用武器伤害的技能、固定技能伤害、持续伤害和召唤物遵循不同规则。',
+  event:'伤害来源', canCrit:'暴击', canSteal:'生命 / 法力吸取', canProc:'武器效果', weaponHit:'普通武器攻击', weaponSkill:'使用武器 DPS 的技能', flatSkill:'固定技能伤害', dot:'持续伤害', minion:'召唤物或部署物', yes:'可以', limited:'取决于技能', no:'不可以',
+  itemsTitle:'装备', all:'全部', weapon:'武器', armorCat:'护甲', trinket:'饰品', petGear:'宠物装备', socketable:'镶嵌物', allRarity:'全部稀有度', level:'装备等级', required:'需求等级', sockets:'孔数', itemsFound:'件装备',
+  spellsTitle:'技能书', offense:'攻击', defense:'防御', summon:'召唤', utility:'辅助',
+  phasesTitle:'相位兽', act:'第', allActs:'全部幕', objective:'挑战目标',
+  noResults:'没有匹配内容。', close:'关闭', chooseLanguage:'选择语言', menu:'菜单', loading:'正在加载数据…',
+}
+
+const zhTW: typeof en = {
+  navHome:'首頁', navClasses:'職業', navMechanics:'機制', navItems:'裝備', navSpells:'技能書', navPhases:'相位獸',
+  search:'搜尋 TL2 Wiki…', classesTitle:'職業', skillTrees:'技能樹', active:'主動', passive:'被動', unlocks:'解鎖等級',
+  rank:'技能等級', skillValues:'本級數值', tierBonuses:'階段獎勵', requirement:'使用條件', cooldown:'冷卻時間', range:'範圍',
+  weaponDamagePct:'武器傷害', chargeScalePct:'怒氣獲得', durationMs:'持續時間', maxTargets:'最多目標', projectiles:'投射物數量',
+  effect:'效果', value:'數值', perLevel:'× 角色等級', seconds:'秒', noRankValues:'這一等級沒有單獨定義的數值效果。',
+  mechTitle:'遊戲機制', triggerGuide:'命中與效果', triggerIntro:'能否爆擊、吸取或觸發武器效果，取決於傷害來自哪裡。普通攻擊、使用武器傷害的技能、固定技能傷害、持續傷害和召喚物遵循不同規則。',
+  event:'傷害來源', canCrit:'爆擊', canSteal:'生命 / 法力吸取', canProc:'武器效果', weaponHit:'普通武器攻擊', weaponSkill:'使用武器 DPS 的技能', flatSkill:'固定技能傷害', dot:'持續傷害', minion:'召喚物或部署物', yes:'可以', limited:'取決於技能', no:'不可以',
+  itemsTitle:'裝備', all:'全部', weapon:'武器', armorCat:'護甲', trinket:'飾品', petGear:'寵物裝備', socketable:'鑲嵌物', allRarity:'全部稀有度', level:'裝備等級', required:'需求等級', sockets:'孔數', itemsFound:'件裝備',
+  spellsTitle:'技能書', offense:'攻擊', defense:'防禦', summon:'召喚', utility:'輔助',
+  phasesTitle:'相位獸', act:'第', allActs:'全部章節', objective:'挑戰目標',
+  noResults:'沒有符合的內容。', close:'關閉', chooseLanguage:'選擇語言', menu:'選單', loading:'正在載入資料…',
+}
+
+const ui = { en, 'zh-CN': zhCN, 'zh-TW': zhTW }
+export type UIKey = keyof typeof en
 export const tr = (lang: Lang, key: UIKey): string => ui[lang][key]
