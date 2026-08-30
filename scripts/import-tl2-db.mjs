@@ -30,8 +30,6 @@ const groupBy = (rows, key) => {
   return grouped
 }
 
-const enrichmentRows = JSON.parse(readFileSync(resolve(projectDir, 'scripts/item-enrichment.json'), 'utf8'))
-const enrichmentByName = new Map(enrichmentRows.map((row) => [row.internalName.toLowerCase(), row]))
 const spellBookSource = JSON.parse(readFileSync(resolve(projectDir, 'scripts/spell-books-source.json'), 'utf8'))
 
 const itemRows = query(`
@@ -48,9 +46,40 @@ const itemAttributes = groupBy(query(`
   SELECT item_id, name, value_text, value_integer, value_real
   FROM item_attributes
 `), (row) => row.item_id)
+const itemDisplayValues = new Map(query(`
+  SELECT * FROM item_display_values
+`).map((row) => [row.item_id, row]))
+const itemWeaponDamageChannels = groupBy(query(`
+  SELECT item_id, damage_type, min_value, max_value
+  FROM item_weapon_damage_channels
+  ORDER BY item_id,
+    CASE damage_type
+      WHEN 'physical' THEN 0 WHEN 'ice' THEN 1 WHEN 'fire' THEN 2
+      WHEN 'electric' THEN 3 WHEN 'poison' THEN 4 ELSE 5
+    END
+`), (row) => row.item_id)
+const itemArmorChannels = groupBy(query(`
+  SELECT item_id, damage_type, min_value, max_value
+  FROM item_armor_channels
+  ORDER BY item_id,
+    CASE damage_type
+      WHEN 'physical' THEN 0 WHEN 'ice' THEN 1 WHEN 'fire' THEN 2
+      WHEN 'electric' THEN 3 WHEN 'poison' THEN 4 ELSE 5
+    END
+`), (row) => row.item_id)
+const itemStatRequirements = groupBy(query(`
+  SELECT item_id, stat, final_requirement
+  FROM item_stat_requirements
+  ORDER BY item_id,
+    CASE stat
+      WHEN 'strength' THEN 0 WHEN 'dexterity' THEN 1
+      WHEN 'focus' THEN 2 WHEN 'vitality' THEN 3 ELSE 4
+    END
+`), (row) => row.item_id)
 const itemDisplayEffects = groupBy(query(`
   SELECT ide.item_id, ide.ordinal, ide.effect_name, ide.effect_type,
-    ide.text_en, ide.text_zh_cn, ide.text_zh_tw, ide.render_status, ide.values_json,
+    ide.text_en, ide.text_zh_cn, ide.text_zh_tw, ide.render_status,
+    ide.display_values_json, ide.value_semantic, ide.rounding_mode,
     ae.activation, ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json
   FROM item_display_effects ide
   JOIN affix_effects ae ON ae.id=ide.affix_effect_id
@@ -60,7 +89,8 @@ const itemDisplayEffects = groupBy(query(`
 const setDisplayEffects = groupBy(query(`
   SELECT sets.internal_name AS set_name, sde.required_count, sde.ordinal,
     sde.effect_name, sde.effect_type, sde.text_en, sde.text_zh_cn, sde.text_zh_tw,
-    sde.render_status, sde.values_json, ae.activation, ae.duration, ae.chance,
+    sde.render_status, sde.display_values_json, sde.value_semantic, sde.rounding_mode,
+    ae.activation, ae.duration, ae.chance,
     ae.min_value, ae.max_value, ae.properties_json
   FROM set_display_effects sde
   JOIN item_sets sets ON sets.id=sde.set_id
@@ -97,28 +127,19 @@ const normalizeRawEffect = (row) => {
 const cleanDisplayEffectText = (value) => clean(value)
   .replace(/\s*[（(][^()（）]*<stat:[^>]+>[^()（）]*[)）]\s*$/i, '')
   .trim()
-const correctOverTimeDisplayValue = (value, effect, minimum, maximum) => {
-  if (effect.type !== 'DAMAGE' || !(effect.duration > 0) || minimum == null) return value
-  const total = (amount) => Math.ceil(Math.abs(amount)) * effect.duration
-  const correctedMinimum = total(minimum)
-  const correctedMaximum = total(maximum ?? minimum)
-  const display = correctedMinimum === correctedMaximum
-    ? String(correctedMinimum)
-    : `${correctedMinimum}-${correctedMaximum}`
-  return value.replace(/\d[\d,.]*(?:\s*[-–]\s*\d[\d,.]*)?/, display)
-}
 const normalizeDisplayEffect = (row) => {
   const effect = normalizeRawEffect(row)
-  const values = JSON.parse(row.values_json || '{}')
-  const minimum = values['1'] ?? effect.min
-  const maximum = values['2'] ?? values['1'] ?? effect.max
+  const displayValues = JSON.parse(row.display_values_json || '{}')
+  const minimum = displayValues.value?.min ?? effect.min
+  const maximum = displayValues.value?.max ?? displayValues.value?.min ?? effect.max
   return {
     ...effect,
     min: minimum == null ? null : number(minimum),
     max: maximum == null ? null : number(maximum),
-    text: local(...[row.text_en, row.text_zh_cn, row.text_zh_tw].map((value) =>
-      correctOverTimeDisplayValue(cleanDisplayEffectText(value), effect, minimum, maximum))),
+    text: local(...[row.text_en, row.text_zh_cn, row.text_zh_tw].map(cleanDisplayEffectText)),
     renderStatus: clean(row.render_status),
+    valueSemantic: clean(row.value_semantic),
+    roundingMode: clean(row.rounding_mode),
   }
 }
 
@@ -136,16 +157,29 @@ const rarityFor = (row) => {
   if (unit.includes('MAGIC')) return 'rare'
   return 'normal'
 }
+const statKeys = { strength: 'str', dexterity: 'dex', focus: 'foc', vitality: 'vit' }
+const channelValues = (rows = []) => Object.fromEntries(rows.map((row) => [
+  clean(row.damage_type).toLowerCase(),
+  [number(row.min_value), number(row.max_value)],
+]))
+const dpsRange = (panel) => {
+  if (panel?.damage_per_second != null) {
+    const value = number(panel.damage_per_second)
+    return [value, value]
+  }
+  if (panel?.damage_per_second_min == null || panel?.damage_per_second_max == null) return null
+  return [number(panel.damage_per_second_min), number(panel.damage_per_second_max)]
+}
+const normalizedDropLevel = (value) => value == null || number(value) >= 999 ? null : number(value)
 
 const equipment = itemRows.map((row) => {
   const attributes = attributeMap(row.id)
-  const enrichment = enrichmentByName.get(clean(row.internal_name).toLowerCase())
-  const fallbackRequirements = [
-    ['str', attrNumber(attributes, 'STRENGTH_REQUIRED')],
-    ['dex', attrNumber(attributes, 'DEXTERITY_REQUIRED')],
-    ['foc', attrNumber(attributes, 'MAGIC_REQUIRED')],
-    ['vit', attrNumber(attributes, 'DEFENSE_REQUIRED')],
-  ].filter(([, value]) => value > 0).map(([stat, value]) => ({ stat, value }))
+  const panel = itemDisplayValues.get(row.id)
+  if (!panel) throw new Error(`Missing item_display_values row for ${row.internal_name || row.id}`)
+  const requirements = (itemStatRequirements.get(row.id) || []).map((requirement) => ({
+    stat: statKeys[clean(requirement.stat).toLowerCase()],
+    value: number(requirement.final_requirement),
+  })).filter((requirement) => requirement.stat && requirement.value > 0)
   const set = row.set_name ? local(
     row.set_display_name_en || row.set_name,
     row.set_display_name_zh_cn,
@@ -156,10 +190,6 @@ const equipment = itemRows.map((row) => {
     pieces: number(bonus.required_count),
     ...normalizeDisplayEffect(bonus),
   })).filter((effect) => effect.type)
-  const baseDamageMin = attrNumber(attributes, 'MINDAMAGE', null)
-  const baseDamageMax = attrNumber(attributes, 'MAXDAMAGE', null)
-  const baseArmorMin = attrNumber(attributes, 'ARMORMIN', null)
-  const baseArmorMax = attrNumber(attributes, 'ARMORMAX', null)
   return {
     id: clean(row.guid) || String(row.id),
     slug: `${slug(row.display_name_en)}-${String(row.id)}`,
@@ -170,32 +200,25 @@ const equipment = itemRows.map((row) => {
     unitType: clean(row.unit_type),
     rarity: rarityFor(row),
     level: number(row.level),
-    requiredLevel: row.required_level ?? attrNumber(attributes, 'LEVEL_REQUIRED'),
-    requirements: enrichment?.requirements || fallbackRequirements,
+    requiredLevel: number(panel.required_level),
+    requirements,
     sockets: number(row.sockets),
-    maxSockets: enrichment?.maxSockets ?? attrNumber(attributes, 'MAX_SOCKETS', null),
-    speed: enrichment?.speed ?? attrNumber(attributes, 'SPEED', null),
-    blockChance: enrichment?.blockChance ?? attrNumber(attributes, 'BLOCK_CHANCE', null),
-    minimumDropLevel: row.drop_min_level ?? enrichment?.minimumDropLevel ?? row.min_level,
-    maximumDropLevel: row.drop_max_level != null
-      ? (number(row.drop_max_level) >= 999 ? null : row.drop_max_level)
-      : enrichment?.maximumDropLevel ?? (number(row.max_level) >= 999 ? null : row.max_level),
-    classRequirement: enrichment?.classRequirement || clean(attributes.get('REQUIREMENT_CLASS')?.value_text) || null,
+    maxSockets: attrNumber(attributes, 'MAX_SOCKETS', null),
+    speed: panel.attack_interval == null ? null : number(panel.attack_interval),
+    damagePerSecond: dpsRange(panel),
+    blockChance: attrNumber(attributes, 'BLOCK_CHANCE', null),
+    minimumDropLevel: normalizedDropLevel(row.drop_min_level ?? row.min_level),
+    maximumDropLevel: normalizedDropLevel(row.drop_max_level ?? row.max_level),
+    classRequirement: clean(panel.required_class) || null,
     set,
     setInternalName: row.set_name ? clean(row.set_name) : null,
     description: row.description_en ? local(row.description_en, row.description_zh_cn, row.description_zh_tw) : null,
     iconPath: pathForWeb(row.icon_path),
-    armor: enrichment?.armor || {},
-    damage: enrichment?.damage || {},
-    baseValues: {
-      damage: baseDamageMin == null && baseDamageMax == null ? null : [baseDamageMin, baseDamageMax],
-      armor: baseArmorMin == null && baseArmorMax == null ? null : [baseArmorMin, baseArmorMax],
-    },
+    armor: channelValues(itemArmorChannels.get(row.id)),
+    damage: channelValues(itemWeaponDamageChannels.get(row.id)),
     effects,
-    setBonuses: (enrichment?.setBonuses || []).map((bonus) => ({ pieces: bonus.pieces, text: local(bonus.text, null, null), value: bonus.value })),
     rawSetBonuses: rawBonuses,
-    exactEnrichment: Boolean(enrichment),
-    specialSource: enrichment?.specialSource || null,
+    panelFormulaVersion: clean(panel.formula_version),
     sourceFile: clean(row.source_path),
   }
 }).filter((item) => item.rarity !== 'normal')
@@ -517,7 +540,6 @@ const meta = {
   languages: ['en', 'zh-CN', 'zh-TW'],
   counts: {
     equipment: equipment.length,
-    enrichedEquipment: equipment.filter((item) => item.exactEnrichment).length,
     itemEffects: equipment.reduce((sum, item) => sum + item.effects.length, 0),
     spellBooks: spellBooks.length,
     localizedSpellBooks: spellBooks.filter((spell) => spell.name.zhCN !== spell.name.en || spell.name.zhTW !== spell.name.en).length,

@@ -32,21 +32,21 @@ interface RawEffect {
   scalingGraph?: string | null
   text?: LocalText | null
   renderStatus?: string
+  valueSemantic?: string
+  roundingMode?: string
 }
-interface DbEffect { text: LocalText; value: number | null }
-interface DbSetBonus extends DbEffect { pieces: number }
 interface DbRawSetBonus extends RawEffect { pieces: number }
 interface DbEquipment {
   id: string; slug: string; name: LocalText; internalName: string; category: ItemCategory; subtype: string
   unitType: string; rarity: Rarity; level: number; requiredLevel: number
   requirements: { stat: Exclude<StatKey, 'none'>; value: number }[]; sockets: number; speed: number | null
+  damagePerSecond: [number,number] | null
   set: LocalText | null; description: LocalText | null; iconPath: string | null
   setInternalName: string | null
   maxSockets: number | null; blockChance: number | null; minimumDropLevel: number | null; maximumDropLevel: number | null
   classRequirement: string | null; armor: Record<string, [number, number]>; damage: Record<string, [number, number]>
-  baseValues: {damage:[number,number] | null; armor:[number,number] | null}
-  effects: RawEffect[]; setBonuses: DbSetBonus[]; rawSetBonuses: DbRawSetBonus[]
-  exactEnrichment: boolean; specialSource: string | null; sourceFile: string
+  effects: RawEffect[]; rawSetBonuses: DbRawSetBonus[]
+  panelFormulaVersion: string; sourceFile: string
 }
 interface DbSpellBook {
   id: string; name: LocalText; family: LocalText; tier: number; school: 'offense'|'defense'|'summon'|'utility'
@@ -63,7 +63,7 @@ interface DbPhaseChallenge { id:string; name:LocalText }
 interface DbPhaseBeast { id:string; act:number; region:LocalText; challenges:DbPhaseChallenge[] }
 interface DbMeta {
   generatedAt:string
-  counts:{equipment:number;enrichedEquipment:number;itemEffects:number;spellBooks:number;localizedSpellBooks:number;classSkills:number;skillRanks:number;phaseChallenges:number;icons:number}
+  counts:{equipment:number;itemEffects:number;spellBooks:number;localizedSpellBooks:number;classSkills:number;skillRanks:number;phaseChallenges:number;icons:number}
   gaps:Record<string,number>
 }
 type SkillGraphs = Record<string, [number, number][]>
@@ -196,7 +196,10 @@ function Home({lang,go,onSearch,onClass,data}:{lang:Lang;go:(page:Page)=>void;on
 function PageHeader({section,title,children}:{section:string;title:string;children:string}){return <section className="page-header"><div className="content"><span>{section}</span><h1>{title}</h1><p>{children}</p></div></section>}
 function SectionTitle({eyebrow,title}:{eyebrow:string;title:string}){return <div className="section-title"><span>{eyebrow}</span><h2>{title}</h2></div>}
 function StatPill({stat}:{stat:StatKey}){return stat==='none'?<span className="stat-pill none">—</span>:<span className={`stat-pill ${stat}`}><i/>{statLabels[stat]}</span>}
-function RichText({value}:{value:string}){return <>{value.split('**').map((part,index)=>index%2?<strong key={index}>{part}</strong>:part)}</>}
+function BoldText({value}:{value:string}){return <>{value.split('**').map((part,index)=>index%2?<strong key={index}>{part}</strong>:part)}</>}
+function RichText({value}:{value:string}){
+  return <>{value.split(/\[tooltip\]\((.*?)\)\[\/tooltip\]/g).map((part,index)=>index%2?<span className="inline-tooltip" tabIndex={0} aria-label={part} key={index}><Info size={14}/><span role="tooltip">{part}</span></span>:<BoldText value={part} key={index}/>)}</>
+}
 function Loading({lang}:{lang:Lang}){return <div className="loading"><span/><p>{tr(lang,'loading')}</p></div>}
 
 function ClassesPage({lang,classId,setClassId,classSkills,skillGraphs,focus}:{lang:Lang;classId:string;setClassId:(id:string)=>void;classSkills:DbClassGroup[];skillGraphs:SkillGraphs;focus:SkillFocus|null}){
@@ -354,19 +357,39 @@ function Pagination({page,pages,setPage,lang}:{page:number;pages:number;setPage:
 
 function EquipmentDrawer({item,variants,lang,onClose}:{item:DbEquipment;variants:DbEquipment[];lang:Lang;onClose:()=>void}){
   const [currentId,setCurrentId]=useState(item.id);const current=variants.find(variant=>variant.id===currentId)??item
-  return <div className="drawer-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}><aside className="detail-drawer"><button className="drawer-close" onClick={onClose} aria-label={tr(lang,'close')}><X/></button><div className="drawer-title"><img className={`rarity-border ${current.rarity}`} src={asset(current.iconPath)} alt=""/><div><div className="item-badges"><span className={`rarity ${current.rarity}`}>{rarityName(current.rarity,lang)}</span>{current.set&&<span className="set-tag">{copy(lang,'套装','Set','套裝')}</span>}</div><h2>{pick(current.name,lang)}</h2>{originalName(current.name,lang)&&<small className="original-name">{current.name.en}</small>}<p className="subtype">{subtypeName(current.subtype,lang)}</p></div></div>
+  const hasRequirements=current.requiredLevel>0||current.requirements.length>0||Boolean(current.classRequirement)
+  return <div className="drawer-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}><aside className="detail-drawer"><button className="drawer-close" onClick={onClose} aria-label={tr(lang,'close')}><X/></button><div className="drawer-title"><img className={`rarity-border ${current.rarity}`} src={asset(current.iconPath)} alt=""/><div><div className="item-badges"><span className={`rarity ${current.rarity}`}>{rarityName(current.rarity,lang)}</span>{current.set&&<span className="set-tag">{copy(lang,'套装','Set','套裝')}</span>}</div><h2>{pick(current.name,lang)}</h2>{originalName(current.name,lang)&&<small className="original-name">{current.name.en}</small>}<p className="item-level-type">Lv.{current.level} {subtypeName(current.subtype,lang)}</p></div></div>
     {variants.length>1&&<div className="variant-field"><span>{copy(lang,'选择等级','Choose level','選擇等級')}</span><SelectControl className="variant-select" label={copy(lang,'选择等级','Choose level','選擇等級')} value={currentId} onChange={setCurrentId} options={[...variants].sort((a,b)=>a.level-b.level).map(variant=>({value:variant.id,label:`Lv ${variant.level} · ${rarityName(variant.rarity,lang)}`}))}/></div>}
-    {current.description&&<blockquote>{pick(current.description,lang)}</blockquote>}<dl className="detail-grid"><div><dt>{tr(lang,'level')}</dt><dd>{current.level}</dd></div><div><dt>{tr(lang,'required')}</dt><dd>{current.requiredLevel||'—'}</dd></div>{current.category==='weapon'&&current.speed!=null&&<div><dt>{copy(lang,'攻击速度','Attack speed','攻擊速度')}</dt><dd>{current.speed} {tr(lang,'seconds')}</dd></div>}</dl>
-    {(current.requirements.length>0||current.classRequirement)&&<DetailSection title={copy(lang,'装备需求','Requirements','裝備需求')}>{current.requirements.length>0&&<div className="requirement-row">{current.requirements.map(requirement=><span key={requirement.stat}><StatPill stat={requirement.stat}/><b>{requirement.value}</b></span>)}</div>}{current.classRequirement&&<p>{copy(lang,'职业','Class','職業')}: {classRequirementName(current.classRequirement,lang)}</p>}</DetailSection>}
-    {Object.keys(current.damage).length>0&&<DetailSection title={copy(lang,'基础伤害范围','Base damage ranges','基礎傷害範圍')}><DataValues values={current.damage}/></DetailSection>}{Object.keys(current.armor).length>0&&<DetailSection title={copy(lang,'基础护甲范围','Base armor ranges','基礎護甲範圍')}><DataValues values={current.armor}/></DetailSection>}
+    {current.description&&<blockquote>{pick(current.description,lang)}</blockquote>}
+    {hasRequirements&&<DetailSection title={copy(lang,'装备需求','Requirements','裝備需求')}><div className="requirement-options">{current.requiredLevel>0&&<strong className="requirement-level">Lv.{current.requiredLevel}</strong>}{current.requiredLevel>0&&current.requirements.length>0&&<span className="requirement-or">{copy(lang,'或','Or','或')}</span>}{current.requirements.length>0&&<div className="requirement-row">{current.requirements.map((requirement,index)=><span key={`${requirement.stat}-${index}`}>{index>0&&<em>{copy(lang,'且','and','且')}</em>}<StatPill stat={requirement.stat}/><b>{requirement.value}</b></span>)}</div>}</div>{current.classRequirement&&<p className="requirement-class"><strong>{copy(lang,'职业：','Class:','職業：')}</strong>{classRequirementName(current.classRequirement,lang)}</p>}</DetailSection>}
+    <EquipmentBaseValues item={current} lang={lang}/>
     {current.effects.length>0&&<DetailSection title={copy(lang,'物品效果','Item effects','裝備效果')}><ul className="raw-effect-list">{current.effects.map((effect,index)=><RawEffectLine key={`${effect.type}-${index}`} effect={effect} lang={lang}/>)}</ul></DetailSection>}
-    {current.set&&<DetailSection title={copy(lang,'套装','Set','套裝')}><p>{pick(current.set,lang)}</p>{current.rawSetBonuses.length>0?<ul className="raw-effect-list">{current.rawSetBonuses.map((bonus,index)=><RawEffectLine key={`${bonus.pieces}-${bonus.type}-${index}`} effect={bonus} lang={lang} pieces={bonus.pieces}/>)}</ul>:current.setBonuses.length>0&&<ul className="effect-list set-bonuses">{current.setBonuses.map((bonus,index)=><li key={`${bonus.pieces}-${bonus.text.en}-${index}`}><b>{bonus.pieces} {copy(lang,'件','pieces','件')}</b>{pick(bonus.text,lang)}</li>)}</ul>}</DetailSection>}
+    {current.set&&<DetailSection title={copy(lang,'套装','Set','套裝')}><p>{pick(current.set,lang)}</p>{current.rawSetBonuses.length>0&&<ul className="raw-effect-list">{current.rawSetBonuses.map((bonus,index)=><RawEffectLine key={`${bonus.pieces}-${bonus.type}-${index}`} effect={bonus} lang={lang} pieces={bonus.pieces}/>)}</ul>}</DetailSection>}
     {(current.minimumDropLevel!=null||current.maximumDropLevel!=null||current.blockChance)&&<DetailSection title={copy(lang,'其他数值','Other values','其他數值')}>{(current.minimumDropLevel!=null||current.maximumDropLevel!=null)&&<p>{copy(lang,'掉落等级','Drop level','掉落等級')}: {current.minimumDropLevel!=null&&current.maximumDropLevel!=null?`${current.minimumDropLevel}–${current.maximumDropLevel}`:current.minimumDropLevel!=null?`${current.minimumDropLevel}+`:`≤ ${current.maximumDropLevel}`}</p>}{Boolean(current.blockChance)&&<p>{copy(lang,'格挡几率','Block chance','格擋機率')}: {current.blockChance}%</p>}</DetailSection>}
-    {current.specialSource&&<DetailSection title={copy(lang,'获取方式','Where to find','取得方式')}><p>{current.specialSource}</p></DetailSection>}
   </aside></div>
 }
 function DetailSection({title,children}:{title:string;children:React.ReactNode}){return <section className="detail-section"><h3>{title}</h3>{children}</section>}
-function DataValues({values}:{values:Record<string,[number,number]>}){return <div className="value-list">{Object.entries(values).map(([key,[min,max]])=><span key={key}><i className={key}/>{titleCase(key)}<b>{min===max?min:`${min}–${max}`}</b></span>)}</div>}
+const itemValueNames:Record<string,{damage:LocalText;armor:LocalText}>={
+  physical:{damage:text('Physical Damage','物理伤害','物理傷害'),armor:text('Physical Armor','物理防御','物理防禦')},
+  fire:{damage:text('Fire Damage','火焰伤害','火焰傷害'),armor:text('Fire Armor','火焰防御','火焰防禦')},
+  ice:{damage:text('Ice Damage','寒冰伤害','寒冰傷害'),armor:text('Ice Armor','寒冰防御','寒冰防禦')},
+  electric:{damage:text('Electric Damage','闪电伤害','閃電傷害'),armor:text('Electric Armor','闪电防御','閃電防禦')},
+  poison:{damage:text('Poison Damage','毒素伤害','毒素傷害'),armor:text('Poison Armor','毒素防御','毒素防禦')},
+}
+const rangeText=([min,max]:[number,number])=>min===max?min.toLocaleString():`${min.toLocaleString()}–${max.toLocaleString()}`
+function EquipmentBaseValues({item,lang}:{item:DbEquipment;lang:Lang}){
+  const damage=Object.entries(item.damage)
+  const armor=Object.entries(item.armor)
+  const dps=item.damagePerSecond
+  if(!damage.length&&!armor.length&&!(item.category==='weapon'&&item.speed!=null))return null
+  const valueName=(type:string,kind:'damage'|'armor')=>itemValueNames[type]?pick(itemValueNames[type][kind],lang):titleCase(type.replaceAll('_',' '))
+  return <section className="item-base-values" aria-label={copy(lang,'基础数值','Base values','基礎數值')}>
+    {dps!=null&&<strong>{rangeText(dps)} {copy(lang,'每秒伤害','Damage per Second','每秒傷害')}</strong>}
+    {item.category==='weapon'&&item.speed!=null&&<strong>{item.speed}s {copy(lang,'攻击间隔','Attack Speed','攻擊間隔')}</strong>}
+    {damage.map(([type,value])=><span className={`item-value-line ${type}`} key={type}><em>{valueName(type,'damage')}{lang==='en'?':':'：'}</em><b>{rangeText(value)}</b></span>)}
+    {armor.map(([type,value])=><span className={`item-value-line ${type}`} key={type}><b>{rangeText(value)}</b><em>{valueName(type,'armor')}</em></span>)}
+  </section>
+}
 
 function SpellsPage({lang,spells}:{lang:Lang;spells:DbSpellBook[]}){
   const [school,setSchool]=useState<'all'|DbSpellBook['school']>('all');const [query,setQuery]=useState('');const [selected,setSelected]=useState<DbSpellBook|null>(null)

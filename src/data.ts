@@ -57,8 +57,8 @@ export const statInfo: StatInfo[] = [
     t('For either chance, the exact contribution is **Dexterity × (0.2002 − 0.0002 × Dexterity)%**. Each new point is worth less than the previous one, and the contribution from Dexterity is capped at **50%**.', '两项几率各自的准确加成为 **敏捷 ×（0.2002 − 0.0002 × 敏捷）%**。投入越多，每点收益越低；敏捷对每项几率最多贡献 **50%**。', '兩項機率的實際加成皆為 **敏捷 ×（0.2002 − 0.0002 × 敏捷）%**。點數越高，每點增加幅度越小；敏捷對每項機率最多提供 **50%**。'),
   ]},
   { key: 'foc', name: t('Focus', '专注', '專注'), effects: [
-    t('Each point of **Focus** adds **0.5 maximum Mana** and **0.5% elemental damage**.', '每点**专注**增加 **0.5 点法力上限**和 **0.5% 元素伤害**。', '每點**專注**增加 **0.5 點法力上限**和 **0.5% 元素傷害**。'),
-    t('Focus also increases the displayed damage of skills that use a fixed damage value, including fixed physical damage.', '使用固定伤害数值的技能也会随专注提高伤害，其中包括固定物理伤害。', '使用固定傷害數值的技能也會隨專注提高傷害，其中包括固定物理傷害。'),
+    t('Each point of **Focus** adds **0.5 maximum Mana**.', '每点**专注**增加 **0.5 点法力上限**。', '每點**專注**增加 **0.5 點法力上限**。'),
+    t('Each point of **Focus** adds **0.5% to all fixed damage**[tooltip](For example, the Outlander’s Glaive Throw damage and a weapon’s physical DoT.)[/tooltip] **or elemental damage**[tooltip](This includes converted elemental weapon damage and DPS% damage.)[/tooltip].', '每点**专注**增加 **0.5% 的任何固定伤害**[tooltip](例如塞外客「投掷回旋镖」的伤害、武器的物理 DoT 伤害。)[/tooltip]**或元素伤害**[tooltip](包括元素化的武器伤害和 DPS% 伤害。)[/tooltip]。', '每點**專注**增加 **0.5% 的任何固定傷害**[tooltip](例如塞外客「投擲迴旋鏢」的傷害、武器的物理 DoT 傷害。)[/tooltip]**或元素傷害**[tooltip](包括元素化的武器傷害和 DPS% 傷害。)[/tooltip]。'),
     t('Execute chance uses the same diminishing curve: **Focus × (0.2002 − 0.0002 × Focus)%**, capped at **50%** from Focus.', '处决几率使用同样的递减曲线：**专注 ×（0.2002 − 0.0002 × 专注）%**；专注最多贡献 **50%**。', '處決機率採用相同的遞減公式：**專注 ×（0.2002 − 0.0002 × 專注）%**；專注最多提供 **50%**。'),
   ]},
   { key: 'vit', name: t('Vitality', '体力', '體力'), effects: [
