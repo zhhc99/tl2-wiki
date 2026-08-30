@@ -79,8 +79,16 @@ const itemStatRequirements = groupBy(query(`
 const itemDisplayEffects = groupBy(query(`
   SELECT ide.item_id, i.category AS item_category, ide.ordinal, ide.effect_name, ide.effect_type,
     ide.text_en, ide.text_zh_cn, ide.text_zh_tw, ide.render_status,
-    ide.display_values_json, ide.value_semantic, ide.rounding_mode,
+    ide.raw_values_json, ide.display_values_json, ide.provenance_json,
+    ide.value_semantic, ide.rounding_mode, ide.template_kind,
+    ide.uses_over_time_template, ide.display_precision,
     ae.activation, ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json,
+    ae.damage_type_en, ae.damage_type_zh_cn, ae.damage_type_zh_tw,
+    edt.good_description_en, edt.good_description_zh_cn, edt.good_description_zh_tw,
+    edt.good_description_over_time_en, edt.good_description_over_time_zh_cn, edt.good_description_over_time_zh_tw,
+    edt.bad_description_en, edt.bad_description_zh_cn, edt.bad_description_zh_tw,
+    edt.bad_description_over_time_en, edt.bad_description_over_time_zh_cn, edt.bad_description_over_time_zh_tw,
+    edt.display_precision_max_value,
     EXISTS(
       SELECT 1 FROM affix_unit_types aut
       WHERE aut.affix_id=iea.affix_id AND upper(aut.unit_type)='WEAPON'
@@ -93,6 +101,7 @@ const itemDisplayEffects = groupBy(query(`
   JOIN items i ON i.id=ide.item_id
   JOIN item_effective_affixes iea ON iea.id=ide.effective_affix_id
   JOIN affix_effects ae ON ae.id=ide.affix_effect_id
+  LEFT JOIN effect_display_templates edt ON edt.id=ae.display_template_id
   WHERE ide.is_player_visible=1
   ORDER BY ide.item_id, ide.ordinal
 `), (row) => row.item_id)
@@ -113,6 +122,60 @@ const attributeMap = (itemId) => new Map((itemAttributes.get(itemId) || []).map(
 const attrNumber = (attributes, name, fallback = 0) => {
   const row = attributes.get(name)
   return row?.value_integer ?? row?.value_real ?? number(row?.value_text, fallback)
+}
+const graphRows = query(`
+  SELECT g.internal_name, g.properties_json, gp.x, gp.y
+  FROM graphs g
+  JOIN graph_points gp ON gp.graph_id=g.id
+  ORDER BY g.internal_name, gp.ordinal
+`)
+const graphs = new Map([...groupBy(graphRows, (row) => clean(row.internal_name).toUpperCase())].map(([name, rows]) => [name, {
+  points: rows.map((row) => [number(row.x), number(row.y)]),
+  inferPassedEnd: Boolean(JSON.parse(rows[0]?.properties_json || '{}').INFER_PASSED_END?.value),
+}]))
+const graphValue = (name, x) => {
+  const graph = graphs.get(clean(name).toUpperCase())
+  const points = graph?.points || []
+  if (!points.length) return null
+  const exact = points.find(([pointX]) => pointX === x)
+  if (exact) return exact[1]
+  if (points.length === 1) return points[0][1]
+  let left
+  let right
+  if (x < points[0][0]) [left, right] = points
+  else if (x > points.at(-1)[0]) {
+    if (!graph.inferPassedEnd) return points.at(-1)[1]
+    ;[left, right] = points.slice(-2)
+  } else {
+    for (let index = 1; index < points.length; index += 1) {
+      if (points[index][0] > x) {
+        left = points[index - 1]
+        right = points[index]
+        break
+      }
+    }
+  }
+  if (!left || !right || right[0] === left[0]) return left?.[1] ?? points[0][1]
+  return left[1] + ((x - left[0]) / (right[0] - left[0])) * (right[1] - left[1])
+}
+const roundHalfUp = (value, precision = 0) => {
+  const scale = 10 ** precision
+  return Math.sign(value) * Math.floor(Math.abs(value) * scale + 0.5) / scale
+}
+const signedCeil = (value) => Math.sign(value) * Math.ceil(Math.abs(value))
+const effectNumber = (value, precision, precisionMax) => {
+  const selectedPrecision = precisionMax != null && Math.abs(value) > precisionMax ? 0 : precision
+  const fixed = Math.abs(value).toFixed(Math.max(0, selectedPrecision))
+  return selectedPrecision > 0 ? fixed.replace(/0+$/, '').replace(/\.$/, '') : fixed
+}
+const damageLabels = {
+  ALL: { en: 'All', zhCN: '全部', zhTW: '全部' },
+  PHYSICAL: { en: 'Physical', zhCN: '物理', zhTW: '物理' },
+  FIRE: { en: 'Fire', zhCN: '火焰', zhTW: '火焰' },
+  ICE: { en: 'Ice', zhCN: '寒冰', zhTW: '寒冰' },
+  ELECTRIC: { en: 'Electric', zhCN: '闪电', zhTW: '閃電' },
+  POISON: { en: 'Poison', zhCN: '毒素', zhTW: '毒素' },
+  MAGICAL: { en: 'Magical', zhCN: '魔法', zhTW: '魔法' },
 }
 const normalizeRawEffect = (row) => {
   const properties = JSON.parse(row.properties_json || '{}')
@@ -137,11 +200,90 @@ const normalizeRawEffect = (row) => {
 const cleanDisplayEffectText = (value) => clean(value)
   .replace(/\s*[（(][^()（）]*<stat:[^>]+>[^()（）]*[)）]\s*$/i, '')
   .trim()
-const normalizeDisplayEffect = (row) => {
+const scaledDisplayEffect = (row, targetLevel) => {
+  const raw = JSON.parse(row.raw_values_json || '{}')
+  const provenance = JSON.parse(row.provenance_json || '{}')
+  const uses = provenance.graph_uses || []
+  if (!uses.length || targetLevel == null) return null
+  const slots = Object.fromEntries([1, 2, 3, 4, 5].map((slot) => [slot, raw.slots?.[`value${slot}`] ?? null]))
+  for (const use of uses) {
+    const scale = graphValue(use.graph, targetLevel)
+    if (scale == null) throw new Error(`Missing graph ${use.graph} at level ${targetLevel}`)
+    slots[number(use.slot)] = scale * number(use.raw_percent) / 100
+  }
+  if (slots[1] != null && slots[2] == null) slots[2] = slots[1]
+  const pointRounding = clean(row.value_semantic).startsWith('points') || clean(row.value_semantic).startsWith('damage_over_time_points')
+  const precision = number(row.display_precision)
+  const precisionMax = row.display_precision_max_value == null ? null : number(row.display_precision_max_value)
+  const displayed = Object.fromEntries(Object.entries(slots).map(([slot, value]) => [slot, value == null
+    ? null
+    : pointRounding
+      ? signedCeil(value)
+      : roundHalfUp(value, precisionMax != null && Math.abs(value) > precisionMax ? 0 : precision)]))
+  const outputPrecision = pointRounding ? 0 : precision
+  const pair = (first, second = first) => {
+    if (first == null) return null
+    const firstText = effectNumber(first, outputPrecision, precisionMax)
+    const secondText = effectNumber(second ?? first, outputPrecision, precisionMax)
+    return firstText === secondText ? firstText : `${firstText}-${secondText}`
+  }
+  const duration = raw.duration == null ? null : number(raw.duration)
+  const durationNumber = duration == null ? null : effectNumber(duration, 2, null)
+  const valueOtMin = duration > 0 && displayed[1] != null ? displayed[1] * duration : null
+  const valueOtMax = duration > 0 && displayed[1] != null ? (displayed[2] ?? displayed[1]) * duration : null
+  const kind = clean(row.template_kind) || 'good'
+  const overTime = Boolean(row.uses_over_time_template)
+  const prefix = `${kind}_description${overTime ? '_over_time' : ''}`
+  const fallbackPrefix = `${kind}_description`
+  const templates = {
+    en: row[`${prefix}_en`] || row[`${fallbackPrefix}_en`],
+    zhCN: row[`${prefix}_zh_cn`] || row[`${fallbackPrefix}_zh_cn`],
+    zhTW: row[`${prefix}_zh_tw`] || row[`${fallbackPrefix}_zh_tw`],
+  }
+  const damageKey = clean(provenance.damage_type || 'PHYSICAL').toUpperCase()
+  const localizedDamage = damageLabels[damageKey] || local(
+    row.damage_type_en || damageKey,
+    row.damage_type_zh_cn,
+    row.damage_type_zh_tw,
+  )
+  const skillName = provenance.skill_display_name ? {
+    en: clean(provenance.skill_display_name.en),
+    zhCN: clean(provenance.skill_display_name.zh_cn),
+    zhTW: clean(provenance.skill_display_name.zh_tw),
+  } : null
+  const render = (language) => {
+    const durationText = durationNumber == null ? null : language === 'en'
+      ? `${durationNumber} second${duration === 1 ? '' : 's'}`
+      : `${durationNumber}秒`
+    const valueDuration = displayed[1] == null ? null : effectNumber(displayed[1], outputPrecision, precisionMax)
+    const valueDurationText = valueDuration == null ? null : language === 'en'
+      ? `${valueDuration} second${valueDuration === '1' ? '' : 's'}`
+      : `${valueDuration}秒`
+    const replacements = {
+      VALUE: pair(displayed[1], displayed[2]), VALUE1: pair(displayed[1], displayed[2]),
+      VALUE2: pair(displayed[2]), VALUE_OT: pair(valueOtMin, valueOtMax),
+      VALUE3: pair(displayed[3]), VALUE4: pair(displayed[4]), VALUE5: pair(displayed[5]),
+      VALUE3AND4: pair(displayed[3], displayed[4]), DURATION: durationText,
+      VALUE1ASDURATION: valueDurationText, DMGTYPE: localizedDamage[language], NAME: skillName?.[language],
+    }
+    let result = templates[language]
+    if (!result) return ''
+    for (const [placeholder, replacement] of Object.entries(replacements)) {
+      if (replacement != null) result = result.replaceAll(`[${placeholder}]`, replacement)
+    }
+    return cleanDisplayEffectText(result)
+  }
+  return {
+    min: displayed[1], max: displayed[2] ?? displayed[1],
+    text: { en: render('en'), zhCN: render('zhCN'), zhTW: render('zhTW') },
+  }
+}
+const normalizeDisplayEffect = (row, targetLevel = null) => {
   const effect = normalizeRawEffect(row)
   const displayValues = JSON.parse(row.display_values_json || '{}')
-  const minimum = displayValues.value?.min ?? effect.min
-  const maximum = displayValues.value?.max ?? displayValues.value?.min ?? effect.max
+  const scaled = scaledDisplayEffect(row, targetLevel)
+  const minimum = scaled?.min ?? displayValues.value?.min ?? effect.min
+  const maximum = scaled?.max ?? displayValues.value?.max ?? displayValues.value?.min ?? effect.max
   const socketTargets = clean(row.item_category)==='socketable'
     ? [row.socket_weapon ? 'weapon' : null, row.socket_armor ? 'armor' : null].filter(Boolean)
     : []
@@ -149,7 +291,7 @@ const normalizeDisplayEffect = (row) => {
     ...effect,
     min: minimum == null ? null : number(minimum),
     max: maximum == null ? null : number(maximum),
-    text: local(...[row.text_en, row.text_zh_cn, row.text_zh_tw].map(cleanDisplayEffectText)),
+    text: scaled?.text || local(...[row.text_en, row.text_zh_cn, row.text_zh_tw].map(cleanDisplayEffectText)),
     renderStatus: clean(row.render_status),
     valueSemantic: clean(row.value_semantic),
     roundingMode: clean(row.rounding_mode),
@@ -185,12 +327,114 @@ const dpsRange = (panel) => {
   return [number(panel.damage_per_second_min), number(panel.damage_per_second_max)]
 }
 const normalizedDropLevel = (value) => value == null || number(value) >= 999 ? null : number(value)
+const effectiveNumber = (effective, name, fallback = null) => {
+  const value = effective[clean(name).toUpperCase()]?.value
+  return Number.isFinite(Number(value)) ? Number(value) : fallback
+}
+const f32 = (value) => Math.fround(value)
+const f32Mul = (left, right) => f32(f32(left) * f32(right))
+const f32Div = (left, right) => f32(f32(left) / f32(right))
+const ngLevel = (baseLevel, tier) => {
+  const sourceLevel = Math.max(1, Math.min(55, baseLevel))
+  if (tier === 1) return Math.min(100, 51 + Math.round((sourceLevel - 1) * 32 / 54))
+  if (tier === 2) return Math.min(100, 81 + Math.round((sourceLevel - 1) * 20 / 54))
+  if (tier >= 3) return 100
+  return baseLevel
+}
+const projectedRequirements = (row, effective, targetLevel, effects) => {
+  const selfReduction = effects.filter((effect) => effect.type === 'REDUCED ITEM REQUIREMENTS' && effect.max != null)
+    .reduce((sum, effect) => sum + Math.trunc(Math.abs(effect.max)), 0)
+  const levelGraph = row.category === 'socketable'
+    ? 'ITEM_LEVEL_REQUIREMENTS_SOCKETABLE'
+    : clean(row.unit_type).toUpperCase().startsWith('NORMAL ')
+      ? 'ITEM_LEVEL_REQUIREMENTS_NORMAL'
+      : 'ITEM_LEVEL_REQUIREMENTS'
+  const implicitLevel = Math.max(1, Math.floor(graphValue(levelGraph, targetLevel)))
+  const requiredLevel = row.explicit_required_level == null ? implicitLevel : number(row.explicit_required_level)
+  const statScale = graphValue('ITEM_DEFENSE_REQUIREMENTS', targetLevel)
+  const requirements = [
+    ['str', 'STRENGTH_REQUIRED'], ['dex', 'DEXTERITY_REQUIRED'],
+    ['foc', 'MAGIC_REQUIRED'], ['vit', 'DEFENSE_REQUIRED'],
+  ].map(([stat, field]) => {
+    const rawPercent = effectiveNumber(effective, field, 0)
+    return { stat, value: Math.max(0, Math.floor(statScale * rawPercent / 100) - selfReduction) }
+  }).filter((requirement) => requirement.value > 0)
+  return { requiredLevel, requirements }
+}
+const projectedWeapon = (effective, targetLevel, effects) => {
+  const minDamage = effectiveNumber(effective, 'MINDAMAGE')
+  const maxDamage = effectiveNumber(effective, 'MAXDAMAGE')
+  const speed = effectiveNumber(effective, 'SPEED', 100)
+  const speedMod = effectiveNumber(effective, 'SPEED_DMG_MOD', 100)
+  const rarityMod = effectiveNumber(effective, 'RARITY_DMG_MOD', 100)
+  const deviation = effectiveNumber(effective, 'DEVIATION_FROM_30FPS')
+  if ([minDamage, maxDamage, speed, speedMod, rarityMod, deviation].some((value) => value == null) || maxDamage === 0) return null
+  const ratio = f32Div(minDamage, maxDamage)
+  const pct = Math.trunc(f32Mul(f32Mul(maxDamage, f32Mul(speedMod, f32(0.01))), f32Mul(rarityMod, f32(0.01))))
+  const baseMax = Math.ceil(f32Mul(f32Mul(graphValue('BASE_WEAPON_DAMAGE', targetLevel), pct), f32(0.01)))
+  const factor = f32Mul(baseMax, f32(0.01))
+  const channels = {}
+  for (const [type, field] of [
+    ['physical', 'DAMAGE_PHYSICAL'], ['fire', 'DAMAGE_FIRE'], ['ice', 'DAMAGE_ICE'],
+    ['electric', 'DAMAGE_ELECTRIC'], ['poison', 'DAMAGE_POISON'],
+  ]) {
+    const rawPercent = effectiveNumber(effective, field)
+    let maximum
+    if (type === 'physical' && (rawPercent == null || rawPercent < 0)) maximum = baseMax
+    else if (rawPercent == null || rawPercent <= 0) continue
+    else maximum = Math.trunc(f32Mul(rawPercent, factor))
+    if (maximum < 0) continue
+    const minimum = type === 'physical' ? Math.trunc(f32Mul(maximum, ratio)) : Math.ceil(f32Mul(maximum, ratio))
+    channels[type] = [minimum, maximum]
+  }
+  const rawInterval = f32Mul(deviation, f32Mul(speed, f32(0.01)))
+  const attackInterval = roundHalfUp(rawInterval, 2)
+  const baseMaximum = Object.values(channels).reduce((sum, range) => sum + range[1], 0)
+  const fixedDamage = effects.filter((effect) => effect.type === 'DAMAGE BONUS' && effect.min != null)
+  const bonusMin = fixedDamage.reduce((sum, effect) => sum + Math.trunc(Math.abs(effect.min)), 0)
+  const bonusMax = fixedDamage.reduce((sum, effect) => sum + Math.trunc(Math.abs(effect.max ?? effect.min)), 0)
+  const dps = (bonus) => {
+    const maximum = baseMaximum + bonus
+    return Math.ceil(((maximum + ratio * maximum) * 0.5) / rawInterval)
+  }
+  return { speed: attackInterval, damagePerSecond: [dps(bonusMin), dps(bonusMax)], damage: channels }
+}
+const projectedArmor = (effective, targetLevel) => {
+  const armorMin = effectiveNumber(effective, 'ARMORMIN')
+  const armorMax = effectiveNumber(effective, 'ARMORMAX')
+  const rarityMod = effectiveNumber(effective, 'RARITY_AMR_MOD')
+  const specialMod = effectiveNumber(effective, 'SPECIAL_AMR_MOD', 100)
+  if ([armorMin, armorMax, rarityMod].some((value) => value == null)) return null
+  const specialFactor = f32Mul(specialMod, f32(0.01))
+  const rarityFactor = f32Mul(rarityMod, f32(0.01))
+  const scale = graphValue('ARMOR_PLAYER_BYLEVEL_FORSET', targetLevel)
+  const endpoint = (rawArmor) => {
+    const pct = Math.trunc(f32Mul(f32Mul(rawArmor, specialFactor), rarityFactor))
+    return Math.max(1, Math.ceil(f32Mul(f32Mul(scale, pct), f32(0.01))))
+  }
+  const totals = [endpoint(armorMin), endpoint(armorMax)]
+  const channels = {}
+  for (const [type, field] of [
+    ['physical', 'ARMOR_PHYSICAL'], ['fire', 'ARMOR_FIRE'], ['ice', 'ARMOR_ICE'],
+    ['electric', 'ARMOR_ELECTRIC'], ['poison', 'ARMOR_POISON'],
+  ]) {
+    const rawPercent = effectiveNumber(effective, field)
+    let range
+    if (type === 'physical' && rawPercent == null) range = totals
+    else if (rawPercent == null || rawPercent <= 0) continue
+    else range = totals.map((total) => Math.floor(total * rawPercent * 0.01))
+    if (range[0] > 0 || range[1] > 0) channels[type] = range
+  }
+  return channels
+}
 
-const equipment = itemRows.map((row) => {
+const buildEquipment = (row, ngTier = 0, ngVariantOf = null) => {
   const attributes = attributeMap(row.id)
   const panel = itemDisplayValues.get(row.id)
   if (!panel) throw new Error(`Missing item_display_values row for ${row.internal_name || row.id}`)
-  const requirements = (itemStatRequirements.get(row.id) || []).map((requirement) => ({
+  const targetLevel = ngLevel(number(row.level), ngTier)
+  const effective = JSON.parse(row.effective_properties_json || '{}')
+  let requirements = (itemStatRequirements.get(row.id) || []).map((requirement) => ({
     stat: statKeys[clean(requirement.stat).toLowerCase()],
     value: number(requirement.final_requirement),
   })).filter((requirement) => requirement.stat && requirement.value > 0)
@@ -199,42 +443,79 @@ const equipment = itemRows.map((row) => {
     row.set_display_name_zh_cn,
     row.set_display_name_zh_tw,
   ) : null
-  const effects = (itemDisplayEffects.get(row.id) || []).map(normalizeDisplayEffect).filter((effect) => effect.type)
+  const effects = (itemDisplayEffects.get(row.id) || []).map((effect) => normalizeDisplayEffect(effect, ngTier ? targetLevel : null)).filter((effect) => effect.type)
   const rawBonuses = (setDisplayEffects.get(String(row.set_name || '').toLowerCase()) || []).map((bonus) => ({
     pieces: number(bonus.required_count),
     ...normalizeDisplayEffect(bonus),
   })).filter((effect) => effect.type)
+  let requiredLevel = number(panel.required_level)
+  let speed = panel.attack_interval == null ? null : number(panel.attack_interval)
+  let damagePerSecond = dpsRange(panel)
+  let armor = channelValues(itemArmorChannels.get(row.id))
+  let damage = channelValues(itemWeaponDamageChannels.get(row.id))
+  if (ngTier) {
+    ;({ requiredLevel, requirements } = projectedRequirements(row, effective, targetLevel, effects))
+    const weapon = row.category === 'weapon' ? projectedWeapon(effective, targetLevel, effects) : null
+    const projectedArmorChannels = projectedArmor(effective, targetLevel)
+    if (weapon) ({ speed, damagePerSecond, damage } = weapon)
+    if (projectedArmorChannels) armor = projectedArmorChannels
+  }
+  const baseId = clean(row.guid) || String(row.id)
   return {
-    id: clean(row.guid) || String(row.id),
-    slug: `${slug(row.display_name_en)}-${String(row.id)}`,
+    id: ngTier ? `${baseId}:ng${ngTier}` : baseId,
+    slug: `${slug(row.display_name_en)}-${String(row.id)}${ngTier ? `-ng-plus-${ngTier}` : ''}`,
     name: local(row.display_name_en, row.display_name_zh_cn, row.display_name_zh_tw),
     internalName: clean(row.internal_name),
     category: categoryFor(row.category, row.subtype),
     subtype: clean(row.subtype),
     unitType: clean(row.unit_type),
     rarity: rarityFor(row),
-    level: number(row.level),
-    requiredLevel: number(panel.required_level),
+    level: targetLevel,
+    requiredLevel,
     requirements,
     sockets: number(row.sockets),
     maxSockets: attrNumber(attributes, 'MAX_SOCKETS', null),
-    speed: panel.attack_interval == null ? null : number(panel.attack_interval),
-    damagePerSecond: dpsRange(panel),
+    speed,
+    damagePerSecond,
     blockChance: attrNumber(attributes, 'BLOCK_CHANCE', null),
-    minimumDropLevel: normalizedDropLevel(row.drop_min_level ?? row.min_level),
-    maximumDropLevel: normalizedDropLevel(row.drop_max_level ?? row.max_level),
+    minimumDropLevel: normalizedDropLevel(row.drop_min_level ?? row.min_level) == null ? null : ngLevel(normalizedDropLevel(row.drop_min_level ?? row.min_level), ngTier),
+    maximumDropLevel: normalizedDropLevel(row.drop_max_level ?? row.max_level) == null ? null : ngLevel(normalizedDropLevel(row.drop_max_level ?? row.max_level), ngTier),
     classRequirement: clean(panel.required_class) || null,
     set,
     setInternalName: row.set_name ? clean(row.set_name) : null,
     description: row.description_en ? local(row.description_en, row.description_zh_cn, row.description_zh_tw) : null,
     iconPath: pathForWeb(row.icon_path),
-    armor: channelValues(itemArmorChannels.get(row.id)),
-    damage: channelValues(itemWeaponDamageChannels.get(row.id)),
+    armor,
+    damage,
     effects,
     rawSetBonuses: rawBonuses,
+    ngTier,
+    ngVariantOf,
     panelFormulaVersion: clean(panel.formula_version),
     sourceFile: clean(row.source_path),
   }
+}
+const ngValueSignature = (item) => JSON.stringify({
+  damagePerSecond: item.damagePerSecond,
+  damage: item.damage,
+  armor: item.armor,
+  effects: item.effects.map((effect) => ({
+    type: effect.type,
+    min: effect.min,
+    max: effect.max,
+    text: effect.text,
+  })),
+})
+const equipment = itemRows.flatMap((row) => {
+  const effective = JSON.parse(row.effective_properties_json || '{}')
+  const scalable = effective.NEWGAMEPLUS_LEVEL_MATCH?.value === true
+  const baseId = clean(row.guid) || String(row.id)
+  const base = buildEquipment(row)
+  if (!scalable) return [base]
+  const variants = [1, 2, 3].map((tier) => buildEquipment(row, tier, baseId))
+  const baseSignature = ngValueSignature(base)
+  if (variants.every((variant) => ngValueSignature(variant) === baseSignature)) return [base]
+  return [{ ...base, ngVariantOf: baseId }, ...variants]
 }).filter((item) => item.rarity !== 'normal')
 
 const skillTreeMap = {
@@ -554,6 +835,8 @@ const meta = {
   languages: ['en', 'zh-CN', 'zh-TW'],
   counts: {
     equipment: equipment.length,
+    ngVariantGroups: equipment.filter((item) => item.ngTier === 0 && item.ngVariantOf).length,
+    ngVariantRecords: equipment.filter((item) => item.ngTier > 0).length,
     itemEffects: equipment.reduce((sum, item) => sum + item.effects.length, 0),
     spellBooks: spellBooks.length,
     localizedSpellBooks: spellBooks.filter((spell) => spell.name.zhCN !== spell.name.en || spell.name.zhTW !== spell.name.en).length,

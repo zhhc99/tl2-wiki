@@ -199,6 +199,7 @@ td { padding: 14px 15px; border-top: 1px solid var(--line); font-size: 14px; }
 .rarity.unique { background:#f9e7c7;color:#935c00;box-shadow:inset 0 0 0 1px #eed09b; }
 .rarity.legendary { background:#f8dcd4;color:#931d00;box-shadow:inset 0 0 0 1px #efb7a8; }
 .set-tag { background:#f6dcf8;color:#720e7c;box-shadow:inset 0 0 0 1px #e9b7ed; }
+.ng-badge { margin-left:4px;padding:2px 5px;display:inline-flex;align-items:center;border:1px solid #ccb8a7;border-radius:4px;background:#f3e8dc;color:#85472f;font:750 9px/1.2 sans-serif;letter-spacing:.04em;text-transform:uppercase;vertical-align:middle;white-space:nowrap; }
 .rarity-border.normal { border-color:#aaa59c; }
 .rarity-border.rare { border-color:#9090ff; box-shadow:0 0 0 1px rgba(88,88,168,.12); }
 .rarity-border.unique { border-color:#ffa30e; box-shadow:0 0 0 1px rgba(188,118,1,.12); }
@@ -260,6 +261,7 @@ td { padding: 14px 15px; border-top: 1px solid var(--line); font-size: 14px; }
 .slot-preview:hover .slot-item b { color: var(--accent); }.slot-preview:focus-visible { border-radius: 6px; }
 .slot-preview img { width:48px;height:48px;display:block;border:2px solid var(--line);border-radius:7px;background:var(--surface-2);object-fit:contain; }
 .slot-item { min-width:0; }.slot-item b { display:block;overflow:hidden;font-size:13px;text-overflow:ellipsis;white-space:nowrap; }.slot-item small { display:block;color:var(--muted);font-size:11px; }
+.slot-item .slot-socket-state { width:max-content;margin-top:3px;display:flex;align-items:center;gap:4px;color:#55705b;font-size:10px;font-weight:750;line-height:1; }.slot-socket-state > i { display:flex;gap:2px;font-style:normal; }.slot-socket-state > i > em { width:6px;height:6px;display:block;border:1px solid #8c9f90;border-radius:50%;background:transparent; }.slot-socket-state > i > em.filled { border-color:#55705b;background:#66826b;box-shadow:0 0 0 1px #d8e2d9; }
 .slot-item .slot-unmet { margin-top:4px;display:flex;align-items:center;gap:4px;color:#9a4135;font-size:10px;font-weight:700;line-height:1.25; }
 .slot-unmet svg { flex:0 0 auto; }
 .slot-peek { position:absolute;right:10px;bottom:26px;color:#8d857a;pointer-events:none; }
