@@ -77,11 +77,21 @@ const itemStatRequirements = groupBy(query(`
     END
 `), (row) => row.item_id)
 const itemDisplayEffects = groupBy(query(`
-  SELECT ide.item_id, ide.ordinal, ide.effect_name, ide.effect_type,
+  SELECT ide.item_id, i.category AS item_category, ide.ordinal, ide.effect_name, ide.effect_type,
     ide.text_en, ide.text_zh_cn, ide.text_zh_tw, ide.render_status,
     ide.display_values_json, ide.value_semantic, ide.rounding_mode,
-    ae.activation, ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json
+    ae.activation, ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json,
+    EXISTS(
+      SELECT 1 FROM affix_unit_types aut
+      WHERE aut.affix_id=iea.affix_id AND upper(aut.unit_type)='WEAPON'
+    ) AS socket_weapon,
+    EXISTS(
+      SELECT 1 FROM affix_unit_types aut
+      WHERE aut.affix_id=iea.affix_id AND upper(aut.unit_type) IN ('ARMOR','TRINKET')
+    ) AS socket_armor
   FROM item_display_effects ide
+  JOIN items i ON i.id=ide.item_id
+  JOIN item_effective_affixes iea ON iea.id=ide.effective_affix_id
   JOIN affix_effects ae ON ae.id=ide.affix_effect_id
   WHERE ide.is_player_visible=1
   ORDER BY ide.item_id, ide.ordinal
@@ -132,6 +142,9 @@ const normalizeDisplayEffect = (row) => {
   const displayValues = JSON.parse(row.display_values_json || '{}')
   const minimum = displayValues.value?.min ?? effect.min
   const maximum = displayValues.value?.max ?? displayValues.value?.min ?? effect.max
+  const socketTargets = clean(row.item_category)==='socketable'
+    ? [row.socket_weapon ? 'weapon' : null, row.socket_armor ? 'armor' : null].filter(Boolean)
+    : []
   return {
     ...effect,
     min: minimum == null ? null : number(minimum),
@@ -140,6 +153,7 @@ const normalizeDisplayEffect = (row) => {
     renderStatus: clean(row.render_status),
     valueSemantic: clean(row.value_semantic),
     roundingMode: clean(row.rounding_mode),
+    ...(socketTargets.length ? { socketTargets } : {}),
   }
 }
 
