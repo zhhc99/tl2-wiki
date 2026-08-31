@@ -1,6 +1,6 @@
 # TL2 Wiki
 
-《火炬之光 II》简体中文、繁体中文和英文资料站，使用 React、TypeScript 与 Vite 构建，可部署到 GitHub Pages。
+《火炬之光 II》资料站，使用 React、TypeScript 与 Vite 构建。
 
 ## 本地运行
 
@@ -19,11 +19,8 @@ npm run build
 
 ## 数据
 
-主要数据源为本地 `tl2-wiki-data/database/tl2.sqlite`（schema version 7）。转换器会读取规范化 SQLite 数据库，生成浏览器使用的 JSON，并把物品与技能图标复制到 `public/game-icons`。整个 `tl2-wiki-data/` 原始数据目录已由根目录 `.gitignore` 排除；生成后的站点数据和图标随项目提交，普通构建和 GitHub Pages 部署不依赖原始数据库。
+数据来源于 Steam 版本游戏 (用 GUTS 获取所有细节). 一个本地项目 `tl2-wiki-data` 数据整理成 `sqlite` 数据库, 本项目使用该数据库生成浏览器使用的 JSON 并复制必要图标.
 
-- `tl2-wiki-data/database/tl2.sqlite`：规范化主库，包含装备、词缀、套装、技能书、职业技能、地图和相位兽房间；只在刷新数据时使用，不提交。
-- `tl2-wiki-data/images/`：主库对应的物品与技能原图；只在刷新数据时使用，不提交。
-- `tl2-wiki-data/exports/`：数据库内容的 JSONL 导出，供核对和离线分析使用；站点不直接读取，不提交。
 - `public/data/equipment.json`：4,029 件蓝色及以上稀有度装备、饰品、宠物装备与镶嵌物；其中包括 63 组玩家可见数值随周目变化的基础物品及其 189 条 NG+ 派生记录，包含应用继承覆盖和等级曲线后的最终有效三语装备、套装效果。
 - `public/data/class-skills.json`：4 个职业、12 棵技能树、120 个技能和 1,800 条技能等级记录，含技能图标、官方说明、阶段奖励和结构化每级效果。
 - `public/data/skill-graphs.json`：职业技能实际引用的角色、怪物与法力消耗等级曲线，用于页面中的固定数值换算。
@@ -32,32 +29,15 @@ npm run build
 - `public/data/meta.json`：生成计数、语言范围和已知数据缺口。
 - `public/game-icons/`：已提交的 1,123 个物品与技能图标，运行时直接加载。
 
-装备面板值、需求、装备效果与套装效果均从 schema v7 的结构化表生成；NG 派生物品沿用同一套游戏曲线与逐阶段取整规则。`scripts/spell-books-source.json` 只保留 194 条技能书的分组、层级和类型分类；名称、说明、等级、需求与图标均按 GUID 读取主库。
-
 刷新数据：
 
 ```bash
 npm run data:refresh
 ```
 
-转换器位于 `scripts/import-tl2-db.mjs`，只读取本地 `tl2-wiki-data` 和上述两份已提交的规范化补充数据。页面运行时只请求 `public/data/*.json` 与 `public/game-icons/`，没有外部数据库或网络 API 依赖。
-
-## 页面功能
-
-- 配装面板包含 12 个装备栏、职业/等级选择、495 点以内的属性分配、装备与套装固定属性汇总、需求检查，以及包含装备词缀的完整属性检视。装备经过预览确认后才会加入栏位，配置会保存在当前浏览器。
-- 赌博面板按物品类型、等级和孔数计算四档底层价格，并分别列出向下、向上取整后的八个整数结果。
-- 装备页不展示白色装备和孔数；孔数特殊规则集中在机制页。
-
-## 已知数据缺口
-
-- 2,143 条当前展示装备记录的游戏源文件没有说明文本；站点不会为它们编写替代说明。
-- schema v7 已为当前展示的 6,965 条最终有效装备效果提供完整英文、官方简中和官方繁中文本。
-- 4 条职业简介只有已确认的官方简体中文文本；繁体中文界面按规则回退英文简介。
-- 技能的固定数值现可按角色等级换算；武器 DPS 百分比和专注等仍取决于角色当前装备与属性，因此保留为组成值，不合并成一个假定配装下的最终伤害。
-- 20 个相位兽房间中有 5 个源布局没有 `PHASEROOM_INTRO` 提示，因此挑战列表只展示其余 15 条可验证的官方文本。
+转换器位于 `scripts/import-tl2-db.mjs`.
 
 ## GitHub Pages
 
-仓库包含 `.github/workflows/deploy-pages.yml`，Vite 使用相对资源基路径。首次部署时在仓库 Settings → Pages 中把 Source 设为 GitHub Actions；之后推送到 `main`，工作流会执行 `npm ci`、`npm run build` 并发布 `dist/`。由于生成后的 JSON 和图标已经提交，CI 不需要被忽略的 SQLite 原库。
+仓库包含 `.github/workflows/deploy-pages.yml`，向 `main` 推送时触发 GitHub Pages 部署。
 
-当前工作目录（含被忽略的数据库与 `node_modules`）约 437 MB；Git 跟踪内容约 23 MB，适合直接提交并通过 Pages artifact 部署。具体取舍见 `docs/implementation-notes.md`。
