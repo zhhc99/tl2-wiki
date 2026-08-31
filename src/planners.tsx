@@ -58,6 +58,62 @@ const isClassCompatible=(item:PlannerEquipment,classId:string)=>!item.classRequi
 const fixedEffectValue=(effect:PlannerEffect)=>effect.activation==='PASSIVE'&&effect.min!=null&&effect.min===effect.max?effect.min:0
 const socketTargetFor=(item:PlannerEquipment):'weapon'|'armor'=>item.category==='weapon'?'weapon':'armor'
 const activeGemEffects=(gem:PlannerEquipment,item:PlannerEquipment)=>gem.effects.filter(effect=>effect.socketTargets?.includes(socketTargetFor(item)))
+const buildSocketCount=(item:PlannerEquipment)=>item.rarity==='rare'?4:item.rarity==='unique'||item.rarity==='legendary'?Math.max(2,item.sockets):item.sockets
+
+const numberToken=/[+-]?(?:\d+(?:\.\d+)?|\.\d+)/g
+const nonStackingEffect=/^(?:ADD TRIGGERABLE|CAST SKILL(?:\s|$)|MISSILE REFLECT$)/
+interface NumberTemplate { before:string;after:string;factor:number;explicitPlus:boolean }
+interface NumberTemplates { en:NumberTemplate;zhCN:NumberTemplate;zhTW:NumberTemplate }
+interface EffectSummary { key:string;label:string;count:number;aggregated:boolean }
+const numberTemplate=(text:string,value:number):NumberTemplate|null=>{
+  const matches=[...text.matchAll(numberToken)]
+  if(matches.length!==1||value===0)return null
+  const match=matches[0]
+  const rendered=Number(match[0])
+  if(!Number.isFinite(rendered)||Math.abs(Math.abs(rendered)-Math.abs(value))>1e-4)return null
+  const start=match.index as number
+  return {before:text.slice(0,start),after:text.slice(start+match[0].length),factor:rendered/value,explicitPlus:match[0].startsWith('+')}
+}
+const localTemplates=(effect:PlannerEffect)=>effect.text&&effect.min!=null?{
+  en:numberTemplate(effect.text.en,effect.min),
+  zhCN:numberTemplate(effect.text.zhCN,effect.min),
+  zhTW:numberTemplate(effect.text.zhTW,effect.min),
+}:null
+const formatEffectValue=(value:number,explicitPlus:boolean)=>{
+  const rounded=Number(value.toFixed(4))
+  return `${explicitPlus&&rounded>0?'+':''}${rounded}`
+}
+const summarizeEffects=(effects:PlannerEffect[],lang:Lang):EffectSummary[]=>{
+  type StackableRow={key:string;templates:NumberTemplates;total:number;count:number}
+  type RepeatedRow={key:string;label:string;count:number}
+  const rows=new Map<string,StackableRow|RepeatedRow>()
+  effects.forEach(effect=>{
+    const value=fixedEffectValue(effect)
+    const templates=effect.activation==='PASSIVE'&&!nonStackingEffect.test(effect.type)?localTemplates(effect):null
+    if(value&&templates?.en&&templates.zhCN&&templates.zhTW){
+      const templateKey=JSON.stringify([effect.type,effect.damageType,templates.en,templates.zhCN,templates.zhTW])
+      const key=`sum:${templateKey}`
+      const current=rows.get(key) as StackableRow|undefined
+      if(current){current.total+=value;current.count+=1}
+      else rows.set(key,{key,templates:{en:templates.en,zhCN:templates.zhCN,zhTW:templates.zhTW},total:value,count:1})
+      return
+    }
+    const rawValue=effect.min==null&&effect.max==null?'':effect.min===effect.max?`${effect.min}`:`${effect.min}–${effect.max}`
+    const label=effect.text?pick(effect.text,lang):`${effect.type.toLowerCase()}${rawValue?` ${rawValue}`:''}`
+    const key=`raw:${label}`
+    const current=rows.get(key) as RepeatedRow|undefined
+    if(current)current.count+=1
+    else rows.set(key,{key,label,count:1})
+  })
+  return [...rows.values()].map(row=>{
+    if('templates' in row){
+      const template=lang==='en'?row.templates.en:lang==='zh-TW'?row.templates.zhTW:row.templates.zhCN
+      const rendered=row.total*template.factor
+      return {key:row.key,label:`${template.before}${formatEffectValue(rendered,template.explicitPlus)}${template.after}`,count:row.count,aggregated:row.count>1}
+    }
+    return {...row,aggregated:false}
+  })
+}
 
 export function BuildsPage({lang,items}:{lang:Lang;items:PlannerEquipment[]}){
   const [classId,setClassId]=useState('berserker')
@@ -96,7 +152,7 @@ export function BuildsPage({lang,items}:{lang:Lang;items:PlannerEquipment[]}){
       const next:SocketLoadout={}
       for(const slot of slots){
         const item=loadout[slot]?byId.get(loadout[slot] as string):null
-        const values=(current[slot]||[]).slice(0,item?.sockets||0).map(id=>id&&byId.get(id)?.category==='socketable'?id:null)
+        const values=(current[slot]||[]).slice(0,item?buildSocketCount(item):0).map(id=>id&&byId.get(id)?.category==='socketable'?id:null)
         if(values.some(Boolean))next[slot]=values
         if(JSON.stringify(values)!==JSON.stringify(current[slot]||[]))changed=true
       }
@@ -110,18 +166,14 @@ export function BuildsPage({lang,items}:{lang:Lang;items:PlannerEquipment[]}){
     const representative=equipped.find(row=>row.item.setInternalName===setId)?.item
     return (representative?.rawSetBonuses||[]).filter(effect=>effect.pieces<=count)
   })
-  const activeSocketRows=equipped.flatMap(({slot,item})=>(socketLoadout[slot]||[]).slice(0,item.sockets).flatMap((gemId,index)=>{
+  const activeSocketRows=equipped.flatMap(({slot,item})=>(socketLoadout[slot]||[]).slice(0,buildSocketCount(item)).flatMap((gemId,index)=>{
     const gem=gemId?byId.get(gemId):null
     if(!gem||gem.category!=='socketable')return []
     const effects=activeGemEffects(gem,item)
     return effects.length?[{slot,index,item,gem,effects}]:[]
   }))
   const equipmentEffects=[...equipped.flatMap(row=>row.item.effects),...activeSetEffects,...activeSocketRows.flatMap(row=>row.effects)]
-  const effectSummary=[...equipmentEffects.reduce((map,effect)=>{
-    const rawValue=effect.min==null&&effect.max==null?'':effect.min===effect.max?`${effect.min}`:`${effect.min}–${effect.max}`
-    const label=effect.text?pick(effect.text,lang):`${effect.type.toLowerCase()}${rawValue?` ${rawValue}`:''}`
-    map.set(label,(map.get(label)||0)+1);return map
-  },new Map<string,number>()).entries()]
+  const effectSummary=summarizeEffects(equipmentEffects,lang)
   const gearStats=equipmentEffects.reduce((total,effect)=>{
     const stat=statEffectTypes[effect.type]
     if(stat)total[stat]+=fixedEffectValue(effect)
@@ -196,7 +248,7 @@ export function BuildsPage({lang,items}:{lang:Lang;items:PlannerEquipment[]}){
     ...requirement,
     ok:stats[requirement.stat]-previewSlotStats[requirement.stat]>=requirement.value,
   }))||[]
-  const previewSockets=preview&&!candidate?Array.from({length:preview.item.sockets},(_,index)=>{
+  const previewSockets=preview&&!candidate?Array.from({length:buildSocketCount(preview.item)},(_,index)=>{
     const gemId=socketLoadout[preview.slot]?.[index]
     const gem=gemId?byId.get(gemId):null
     return {index,gem,effects:gem?activeGemEffects(gem,preview.item):[]}
@@ -205,12 +257,11 @@ export function BuildsPage({lang,items}:{lang:Lang;items:PlannerEquipment[]}){
   return <><section className="page-header"><div className="content"><span>{copy(lang,'角色','Character','角色')}</span><h1>{copy(lang,'配装','Build planner','配裝')}</h1><p>{copy(lang,'选择职业、分配属性点并穿戴装备，集中查看属性、基础数值和装备需求。','Choose a class, allocate attribute points and equip a full loadout to inspect stats, base values and requirements.','選擇職業、分配屬性點並穿上裝備，集中查看屬性、基礎數值與裝備需求。')}</p></div></section>
     <div className="content page-body build-page">
       <div className="build-toolbar"><SelectControl className="planner-select" label={copy(lang,'职业','Class','職業')} value={classId} onChange={setClassId} options={classes.map(hero=>({value:hero.id,label:pick(hero.name,lang)}))}/><label className="level-input"><span>{copy(lang,'角色等级','Character level','角色等級')}</span><input type="number" min="1" max="100" value={level} onChange={event=>setLevel(Math.max(1,Math.min(100,Number(event.target.value)||1)))}/></label><button className="reset-build" onClick={reset}><RotateCcw size={16}/>{copy(lang,'重置','Reset','重設')}</button></div>
-      <div className="build-layout"><section className="paper-doll"><header><div><span>{copy(lang,'装备栏','Equipment','裝備欄')}</span><h2>{pick(classes.find(hero=>hero.id===classId)?.name||classes[0].name,lang)}</h2></div><strong>{equipped.length} / 12</strong></header><div className="slot-grid">{slots.map(slot=>{const item=loadout[slot]?byId.get(loadout[slot] as string):null;const locked=slot==='off'&&Boolean(loadout.main&&twoHanded.has(byId.get(loadout.main)?.subtype||''));const unmet=Boolean(item&&!requirementsBySlot.get(slot)?.ok);const socketValues=item?(socketLoadout[slot]||[]).slice(0,item.sockets):[];const filledSockets=socketValues.filter(Boolean).length;return <div key={slot} className={`gear-slot${item?' filled':''}${locked?' disabled':''}${unmet?' unmet':''}`}><span className="slot-label">{slotName(slot,lang)}</span>{item?<><button className="slot-preview" onClick={()=>{setCandidate(null);setPreviewSlot(slot)}} aria-label={copy(lang,`速览${pick(item.name,lang)}`,`Quick view: ${pick(item.name,lang)}`,`快速預覽：${pick(item.name,lang)}`)}><img className={`rarity-border ${item.rarity}`} src={asset(item.iconPath)} alt=""/><span className="slot-item"><b>{pick(item.name,lang)} <NgBadge tier={item.ngTier}/></b><small>Lv {item.level}</small>{item.sockets>0&&<span className="slot-socket-state" aria-label={copy(lang,`${filledSockets}/${item.sockets} 个孔已镶嵌`,`${filledSockets} of ${item.sockets} sockets filled`,`${filledSockets}/${item.sockets} 個孔已鑲嵌`)}><Gem size={11}/><span>{filledSockets}/{item.sockets}</span><i>{Array.from({length:item.sockets},(_,index)=><em className={socketValues[index]?'filled':''} key={index}/>)}</i></span>}{unmet&&<span className="slot-unmet"><CircleAlert size={13}/>{copy(lang,'未满足需求','Requirements not met','未符合需求')}</span>}</span><Eye className="slot-peek" size={15}/></button><button className="remove-item" onClick={()=>{setLoadout(current=>({...current,[slot]:null}));setSocketLoadout(current=>({...current,[slot]:[]}));if(previewSlot===slot)setPreviewSlot(null)}} aria-label={copy(lang,`移除${pick(item.name,lang)}`,`Remove ${pick(item.name,lang)}`,`移除${pick(item.name,lang)}`)}><X size={15}/></button></>:<button className="slot-empty" disabled={locked} onClick={()=>{setPicker(slot);setQuery('')}}>{locked?copy(lang,'双手武器占用','Occupied by two-hand weapon','雙手武器已占用'):copy(lang,'选择装备','Choose item','選擇裝備')}</button>}</div>})}</div></section>
+      <div className="build-layout"><section className="paper-doll"><header><div><span>{copy(lang,'装备栏','Equipment','裝備欄')}</span><h2>{pick(classes.find(hero=>hero.id===classId)?.name||classes[0].name,lang)}</h2></div><strong>{equipped.length} / 12</strong></header><div className="slot-grid">{slots.map(slot=>{const item=loadout[slot]?byId.get(loadout[slot] as string):null;const locked=slot==='off'&&Boolean(loadout.main&&twoHanded.has(byId.get(loadout.main)?.subtype||''));const unmet=Boolean(item&&!requirementsBySlot.get(slot)?.ok);const socketCount=item?buildSocketCount(item):0;const socketValues=item?(socketLoadout[slot]||[]).slice(0,socketCount):[];const filledSockets=socketValues.filter(Boolean).length;return <div key={slot} className={`gear-slot${item?' filled':''}${locked?' disabled':''}${unmet?' unmet':''}`}><span className="slot-label">{slotName(slot,lang)}</span>{item?<><button className="slot-preview" onClick={()=>{setCandidate(null);setPreviewSlot(slot)}} aria-label={copy(lang,`速览${pick(item.name,lang)}`,`Quick view: ${pick(item.name,lang)}`,`快速預覽：${pick(item.name,lang)}`)}><img className={`rarity-border ${item.rarity}`} src={asset(item.iconPath)} alt=""/><span className="slot-item"><b>{pick(item.name,lang)} <NgBadge tier={item.ngTier}/></b><small>Lv {item.level}</small>{socketCount>0&&<span className="slot-socket-state" aria-label={copy(lang,`${filledSockets}/${socketCount} 个孔已镶嵌`,`${filledSockets} of ${socketCount} sockets filled`,`${filledSockets}/${socketCount} 個孔已鑲嵌`)}><Gem size={11}/><span>{filledSockets}/{socketCount}</span><i>{Array.from({length:socketCount},(_,index)=><em className={socketValues[index]?'filled':''} key={index}/>)}</i></span>}{unmet&&<span className="slot-unmet"><CircleAlert size={13}/>{copy(lang,'未满足需求','Requirements not met','未符合需求')}</span>}</span><Eye className="slot-peek" size={15}/></button><button className="remove-item" onClick={()=>{setLoadout(current=>({...current,[slot]:null}));setSocketLoadout(current=>({...current,[slot]:[]}));if(previewSlot===slot)setPreviewSlot(null)}} aria-label={copy(lang,`移除${pick(item.name,lang)}`,`Remove ${pick(item.name,lang)}`,`移除${pick(item.name,lang)}`)}><X size={15}/></button></>:<button className="slot-empty" disabled={locked} onClick={()=>{setPicker(slot);setQuery('')}}>{locked?copy(lang,'双手武器占用','Occupied by two-hand weapon','雙手武器已占用'):copy(lang,'选择装备','Choose item','選擇裝備')}</button>}</div>})}</div></section>
         <aside className="build-inspector"><section className="allocation-card"><header><div><span>{copy(lang,'属性加点','Attributes','屬性加點')}</span><b className={spent>available?'over':''}>{spent} / {available}</b></div><div className="point-track"><i style={{width:`${Math.min(100,available?spent/available*100:0)}%`}}/></div></header>{(Object.keys(statNames) as Stat[]).map(stat=><label className={`stat-allocation ${stat}`} key={stat}><span><b>{pick(statNames[stat],lang)}</b><small>{classBases[classId][stat]} + {gearStats[stat]} {copy(lang,'装备','gear','裝備')}</small></span><input aria-label={pick(statNames[stat],lang)} type="number" min="0" max="495" value={allocated[stat]} onChange={event=>setAllocated(current=>({...current,[stat]:Math.max(0,Math.min(495,Number(event.target.value)||0))}))}/><strong>{stats[stat]}</strong></label>)}{spent>available&&<p className="build-warning">{copy(lang,`超出当前等级可分配点数 ${spent-available} 点。`,`Allocation exceeds the level limit by ${spent-available}.`,`超出目前等級可分配的點數 ${spent-available} 點。`)}</p>}</section>
           <section className="derived-card"><h2>{copy(lang,'完整属性','Full stat overview','完整屬性')}</h2><div className="derived-grid"><div><span>{copy(lang,'武器基础伤害','Base weapon damage','武器基礎傷害')}</span><b>{damage[0]||damage[1]?`${Math.round(damage[0])}–${Math.round(damage[1])}`:'—'}</b></div><div><span>{copy(lang,'武器伤害加成','Weapon damage bonus','武器傷害加成')}</span><b>+{weaponDamageBonus.toFixed(1)}%</b></div><div><span>{copy(lang,'基础护甲','Base armor','基礎護甲')}</span><b>{armor[0]||armor[1]?`${Math.round(armor[0])}–${Math.round(armor[1])}`:'—'}</b></div><div><span>{copy(lang,'护甲加成','Armor bonus','護甲加成')}</span><b>+{armorBonus.toFixed(1)}%</b></div><div><span>{copy(lang,'暴击率','Critical-hit chance','爆擊率')}</span><b>{criticalChance.toFixed(1)}%</b></div><div><span>{copy(lang,'暴击伤害加成','Critical damage bonus','爆擊傷害加成')}</span><b>+{criticalDamage.toFixed(1)}%</b></div><div><span>{copy(lang,'额外生命','Added health','額外生命')}</span><b>+{Math.round(addedHealth)}{addedHealthPercent?` · +${addedHealthPercent}%`:''}</b></div><div><span>{copy(lang,'闪避率','Dodge chance','閃避率')}</span><b>{dodgeChance.toFixed(1)}%</b></div><div><span>{copy(lang,'额外法力','Added mana','額外法力')}</span><b>+{addedMana.toFixed(1)}{addedManaPercent?` · +${addedManaPercent}%`:''}</b></div><div><span>{copy(lang,'专注伤害加成','Focus damage bonus','專注傷害加成')}</span><b>+{focusDamageBonus.toFixed(1)}%</b></div><div><span>{copy(lang,'格挡率','Block chance','格擋率')}</span><b>{blockChance==null?'—':`${blockChance.toFixed(1)}%`}</b></div><div><span>{copy(lang,'处决率','Execute chance','處決率')}</span><b>{executeChance.toFixed(1)}%</b></div><div><span>{copy(lang,'全伤害增加','All damage bonus','全傷害增加')}</span><b>+{allDamage.toFixed(1)}%</b></div><div><span>{copy(lang,'全伤害减免','All damage reduction','全傷害減免')}</span><b>{allDamageReduction.toFixed(1)}%</b></div></div></section>
-          {(requirements.length>0||setCounts.size>0)&&<section className="build-status"><h2>{copy(lang,'当前配置','Current loadout','目前配裝')}</h2>{requirements.map(({slot,item,ok})=><div key={slot}><span>{slotName(slot,lang)} · {pick(item.name,lang)} {ngLabel(item.ngTier)&&`(${ngLabel(item.ngTier)})`}</span><b className={ok?'ok':'blocked'}>{ok?copy(lang,'可装备','Ready','可裝備'):copy(lang,'未满足需求','Requirements not met','未符合需求')}</b></div>)}{[...setCounts.entries()].map(([setId,count])=><div key={setId}><span>{pick(equipped.find(row=>row.item.setInternalName===setId)?.item.set as LocalText,lang)}</span><b>{count} {copy(lang,'件','pieces','件')}</b></div>)}</section>}
         </aside></div>
-      {effectSummary.length>0&&<section className="build-effects"><header><div><span>{copy(lang,'当前加成','Current bonuses','目前加成')}</span><h2>{copy(lang,'装备效果汇总','Equipment effects','裝備效果總覽')}</h2></div><strong>{effectSummary.length}</strong></header><ul>{effectSummary.map(([label,count])=><li key={label}><span>{label}</span>{count>1&&<b>× {count}</b>}</li>)}</ul></section>}
+      {effectSummary.length>0&&<section className="build-effects"><header><div><span>{copy(lang,'当前加成','Current bonuses','目前加成')}</span><h2>{copy(lang,'装备效果汇总','Equipment effects','裝備效果總覽')}</h2></div><strong>{effectSummary.length}</strong></header><ul>{effectSummary.map(row=><li key={row.key}><span>{row.label}</span>{!row.aggregated&&row.count>1&&<b>× {row.count}</b>}</li>)}</ul></section>}
       {activeSocketRows.length>0&&<section className="socketed-gems"><header><div><span>{copy(lang,'镶嵌','Sockets','鑲嵌')}</span><h2>{copy(lang,'已镶嵌宝石','Socketed gems','已鑲嵌寶石')}</h2></div><strong>{activeSocketRows.length}</strong></header><div className="socketed-gem-list">{activeSocketRows.map(row=><article key={`${row.slot}-${row.index}`}><img src={asset(row.gem.iconPath)} alt=""/><div><span>{slotName(row.slot,lang)} · {copy(lang,`第 ${row.index+1} 孔`,`Socket ${row.index+1}`,`第 ${row.index+1} 孔`)}</span><b>{pick(row.gem.name,lang)} <NgBadge tier={row.gem.ngTier}/></b><ul>{row.effects.map((effect,index)=><li key={`${effect.type}-${index}`}>{effect.text?pick(effect.text,lang):effect.type}</li>)}</ul></div></article>)}</div></section>}
     </div>
     {preview&&<div className="gear-preview-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)closePreview()}}>
