@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, CircleAlert, CircleDollarSign, Eye, Gem, RefreshCw, RotateCcw, Search, Shield, Swords, X } from 'lucide-react'
+import { ChevronDown, CircleAlert, CircleDollarSign, ClipboardCopy, ClipboardPaste, Eye, Gem, RefreshCw, RotateCcw, Search, Shield, Swords, X } from 'lucide-react'
 import { classes } from './data'
 import { pick } from './i18n'
 import { SelectControl } from './SelectControl'
@@ -40,6 +40,11 @@ const twoHanded=new Set(['two_hand_axe','two_hand_mace','two_hand_sword','polear
 
 type Slot='main'|'off'|'helmet'|'chest'|'shoulders'|'gloves'|'belt'|'pants'|'boots'|'amulet'|'ring1'|'ring2'
 type SocketLoadout=Partial<Record<Slot,(string|null)[]>>
+interface BuildState {
+  classId:string;level:number;allocated:Record<Stat,number>;loadout:Record<Slot,string|null>;socketLoadout:SocketLoadout
+}
+type TransferDialog={mode:'import'|'export';text:string;message:string}
+type ImportError='empty'|'format'|'version'|'class'
 const slots:Slot[]=['main','off','helmet','shoulders','chest','gloves','belt','pants','boots','amulet','ring1','ring2']
 const slotSubtype:Partial<Record<Slot,string>>={helmet:'helmet',chest:'chest_armor',shoulders:'shoulder_armor',gloves:'gloves',belt:'belt',pants:'pants',boots:'boots',amulet:'amulet',ring1:'ring',ring2:'ring'}
 const slotName=(slot:Slot,lang:Lang)=>{
@@ -49,6 +54,96 @@ const slotName=(slot:Slot,lang:Lang)=>{
   return copy(lang,...names[slot])
 }
 const emptyLoadout=()=>Object.fromEntries(slots.map(slot=>[slot,null])) as Record<Slot,string|null>
+const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value)&&typeof value==='object'&&!Array.isArray(value)
+const clampedInteger=(value:unknown,min:number,max:number,fallback:number)=>typeof value==='number'&&Number.isFinite(value)?Math.max(min,Math.min(max,Math.trunc(value))):fallback
+const itemFitsSlot=(item:PlannerEquipment,slot:Slot)=>{
+  if(slot==='main')return item.category==='weapon'
+  if(slot==='off')return (item.category==='weapon'||item.subtype==='shield')&&!twoHanded.has(item.subtype)
+  return slotSubtype[slot]===item.subtype
+}
+const bytesToBase64Url=(bytes:Uint8Array)=>{
+  let binary=''
+  for(let offset=0;offset<bytes.length;offset+=0x8000)binary+=String.fromCharCode(...bytes.subarray(offset,offset+0x8000))
+  return btoa(binary).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'')
+}
+const base64UrlToBytes=(value:string)=>{
+  if(!value||value.length>20000||!/^[A-Za-z0-9_-]+$/.test(value))throw new Error('invalid build data')
+  const base64=value.replaceAll('-','+').replaceAll('_','/').padEnd(Math.ceil(value.length/4)*4,'=')
+  return Uint8Array.from(atob(base64),character=>character.charCodeAt(0))
+}
+const compressText=async(value:string)=>{
+  const stream=new Blob([value]).stream().pipeThrough(new CompressionStream('gzip'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
+}
+const decompressText=async(bytes:Uint8Array)=>{
+  const input=new Uint8Array(bytes.length)
+  input.set(bytes)
+  const reader=new Blob([input.buffer]).stream().pipeThrough(new DecompressionStream('gzip')).getReader()
+  const chunks:Uint8Array[]=[]
+  let length=0
+  while(true){
+    const {done,value}=await reader.read()
+    if(done)break
+    length+=value.length
+    if(length>100000){await reader.cancel();throw new Error('build data too large')}
+    chunks.push(value)
+  }
+  const output=new Uint8Array(length)
+  let offset=0
+  for(const chunk of chunks){output.set(chunk,offset);offset+=chunk.length}
+  return new TextDecoder().decode(output)
+}
+const serializeBuild=async({classId,level,allocated,loadout,socketLoadout}:BuildState)=>{
+  const equipment=Object.fromEntries(slots.flatMap(slot=>loadout[slot]?[[slot,loadout[slot]]]:[]))
+  const gems=Object.fromEntries(slots.flatMap(slot=>socketLoadout[slot]?.some(Boolean)?[[slot,socketLoadout[slot]]]:[]))
+  const json=JSON.stringify({version:1,classId,level,attributes:allocated,equipment,gems})
+  const buildCode=`TL2BUILD/1:${bytesToBase64Url(await compressText(json))}`
+  return `Torchlight II Build\n\n在 Build Planner 中导入：\nhttps://zhhc99.github.io/tl2-wiki/#/builds\n\n${buildCode}`
+}
+const parseBuild=async(text:string,items:PlannerEquipment[]):Promise<{state:BuildState;skipped:number}|{error:ImportError}>=>{
+  const source=text.trim()
+  if(!source)return {error:'empty'}
+  const match=source.match(/TL2BUILD\/(\d+):([A-Za-z0-9_-]+)/)
+  if(!match)return {error:'format'}
+  if(match[1]!=='1')return {error:'version'}
+  let value:unknown
+  try{value=JSON.parse(await decompressText(base64UrlToBytes(match[2])))}catch{return {error:'format'}}
+  if(!isRecord(value))return {error:'format'}
+  if(value.version!==1)return {error:'version'}
+  if(typeof value.classId!=='string'||!Object.hasOwn(classBases,value.classId))return {error:'class'}
+  const classId=value.classId
+  const attributes=isRecord(value.attributes)?value.attributes:{}
+  const allocated=Object.fromEntries((Object.keys(statNames) as Stat[]).map(stat=>[stat,clampedInteger(attributes[stat],0,495,0)])) as Record<Stat,number>
+  const level=clampedInteger(value.level,1,100,100)
+  const equipment=isRecord(value.equipment)?value.equipment:{}
+  const gems=isRecord(value.gems)?value.gems:{}
+  const byId=new Map(items.map(item=>[item.id,item]))
+  const loadout=emptyLoadout()
+  const socketLoadout:SocketLoadout={}
+  let skipped=0
+  for(const slot of slots){
+    const id=equipment[slot]
+    if(id==null)continue
+    const item=typeof id==='string'?byId.get(id):null
+    if(!item||!itemFitsSlot(item,slot)||!isClassCompatible(item,classId)){skipped+=1;continue}
+    loadout[slot]=item.id
+  }
+  const main=loadout.main?byId.get(loadout.main):null
+  if(main&&twoHanded.has(main.subtype)&&loadout.off){loadout.off=null;skipped+=1}
+  for(const slot of slots){
+    const item=loadout[slot]?byId.get(loadout[slot] as string):null
+    const ids=gems[slot]
+    if(!item||!Array.isArray(ids))continue
+    const values:(string|null)[]=[]
+    for(const id of ids.slice(0,buildSocketCount(item))){
+      const gem=typeof id==='string'?byId.get(id):null
+      if(gem?.category==='socketable'&&activeGemEffects(gem,item).length){values.push(gem.id)}
+      else {values.push(null);if(id!=null)skipped+=1}
+    }
+    if(values.some(Boolean))socketLoadout[slot]=values
+  }
+  return {state:{classId,level,allocated,loadout,socketLoadout},skipped}
+}
 const chance=(value:number)=>Math.min(50,value*(0.2002-0.0002*value))
 const rangeTotal=(values:Record<string,[number,number]>):[number,number]=>{
   const ranges=Object.values(values)
@@ -128,9 +223,12 @@ export function BuildsPage({lang,items}:{lang:Lang;items:PlannerEquipment[]}){
   const [query,setQuery]=useState('')
   const [gemQuery,setGemQuery]=useState('')
   const [restored,setRestored]=useState(false)
+  const [transfer,setTransfer]=useState<TransferDialog|null>(null)
+  const [notice,setNotice]=useState('')
 
   useEffect(()=>{try{const saved=JSON.parse(localStorage.getItem('tl2-build')||'null');if(saved){setClassId(saved.classId||'berserker');setLevel(saved.level||100);setAllocated(current=>({...current,...saved.allocated}));setLoadout({...emptyLoadout(),...saved.loadout});setSocketLoadout(saved.socketLoadout||{})}}catch{/* ignore invalid old data */}finally{setRestored(true)}},[])
   useEffect(()=>{if(restored)try{localStorage.setItem('tl2-build',JSON.stringify({classId,level,allocated,loadout,socketLoadout}))}catch{/* storage may be unavailable */}},[classId,level,allocated,loadout,socketLoadout,restored])
+  useEffect(()=>{if(!notice)return;const timer=window.setTimeout(()=>setNotice(''),3200);return()=>window.clearTimeout(timer)},[notice])
 
   const byId=useMemo(()=>new Map(items.map(item=>[item.id,item])),[items])
   useEffect(()=>{
@@ -239,6 +337,49 @@ export function BuildsPage({lang,items}:{lang:Lang;items:PlannerEquipment[]}){
   const chooseGem=(gem:PlannerEquipment)=>{if(!gemPicker)return;const {slot,index}=gemPicker;setSocketLoadout(current=>{const values=[...(current[slot]||[])];values[index]=gem.id;return {...current,[slot]:values}});setGemPicker(null);setGemQuery('');setPreviewSlot(slot)}
   const closePreview=()=>{setPreviewSlot(null);setCandidate(null)}
   const reset=()=>{setClassId('berserker');setLevel(100);setAllocated({str:0,dex:0,foc:0,vit:0});setLoadout(emptyLoadout());setSocketLoadout({});setPreviewSlot(null);setCandidate(null);setGemPicker(null)}
+  const currentBuild=():BuildState=>({classId,level,allocated,loadout,socketLoadout})
+  const exportBuild=async()=>{
+    let text:string
+    try{text=await serializeBuild(currentBuild())}catch{setNotice(copy(lang,'暂时无法生成配装文字。','Build text could not be created right now.','目前無法產生配裝文字。'));return}
+    try{
+      if(!navigator.clipboard?.writeText)throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(text)
+      setNotice(copy(lang,'配装文字已复制。','Build text copied.','配裝文字已複製。'))
+    }catch{
+      setTransfer({mode:'export',text,message:copy(lang,'浏览器无法写入剪贴板，请手动复制。','Your browser could not write to the clipboard. Copy the text manually.','瀏覽器無法寫入剪貼簿，請手動複製。')})
+    }
+  }
+  const pasteBuild=async()=>{
+    try{
+      if(!navigator.clipboard?.readText)throw new Error('clipboard unavailable')
+      const text=await navigator.clipboard.readText()
+      setTransfer({mode:'import',text,message:''})
+    }catch{
+      setTransfer(current=>current&&current.mode==='import'?{...current,message:copy(lang,'无法读取剪贴板，请在下方手动粘贴。','Clipboard access was blocked. Paste the text below manually.','無法讀取剪貼簿，請在下方手動貼上。')}:current)
+    }
+  }
+  const importBuild=async()=>{
+    if(!transfer||transfer.mode!=='import')return
+    if(!items.length){setTransfer({...transfer,message:copy(lang,'装备仍在加载，请稍后再试。','Equipment is still loading. Try again in a moment.','裝備仍在載入，請稍後再試。')});return}
+    const result=await parseBuild(transfer.text,items)
+    if('error' in result){
+      const message=result.error==='empty'?copy(lang,'请先粘贴配装文字。','Paste build text first.','請先貼上配裝文字。'):result.error==='version'?copy(lang,'此配装来自不支持的版本。','This build uses an unsupported version.','此配裝來自不支援的版本。'):result.error==='class'?copy(lang,'配装中的职业无法识别。','The class in this build is not recognized.','無法辨識此配裝的職業。'):copy(lang,'无法识别这段配装文字，请确认内容完整。','This build text could not be read. Check that it is complete.','無法辨識這段配裝文字，請確認內容完整。')
+      setTransfer({...transfer,message});return
+    }
+    const {state,skipped}=result
+    setClassId(state.classId);setLevel(state.level);setAllocated(state.allocated);setLoadout(state.loadout);setSocketLoadout(state.socketLoadout)
+    setPreviewSlot(null);setCandidate(null);setPicker(null);setGemPicker(null);setTransfer(null)
+    setNotice(skipped?copy(lang,`配装已导入，${skipped} 项无效内容已跳过。`,`Build imported; ${skipped} unavailable entries were skipped.`,`配裝已匯入，已略過 ${skipped} 項無效內容。`):copy(lang,'配装已导入。','Build imported.','配裝已匯入。'))
+  }
+  const retryCopy=async()=>{
+    if(!transfer||transfer.mode!=='export')return
+    try{
+      await navigator.clipboard.writeText(transfer.text)
+      setTransfer(null);setNotice(copy(lang,'配装文字已复制。','Build text copied.','配裝文字已複製。'))
+    }catch{
+      setTransfer({...transfer,message:copy(lang,'仍无法写入剪贴板，请选中文字后手动复制。','Clipboard access is still blocked. Select the text and copy it manually.','仍無法寫入剪貼簿，請選取文字後手動複製。')})
+    }
+  }
   const previewDamage=preview?rangeTotal(preview.item.damage):[0,0]
   const previewArmor=preview?rangeTotal(preview.item.armor):[0,0]
   const previewSlotItem=preview?equipped.find(row=>row.slot===preview.slot)?.item:null
@@ -256,7 +397,7 @@ export function BuildsPage({lang,items}:{lang:Lang;items:PlannerEquipment[]}){
 
   return <><section className="page-header"><div className="content"><span>{copy(lang,'角色','Character','角色')}</span><h1>{copy(lang,'配装','Build planner','配裝')}</h1><p>{copy(lang,'选择职业、分配属性点并穿戴装备，集中查看属性、基础数值和装备需求。','Choose a class, allocate attribute points and equip a full loadout to inspect stats, base values and requirements.','選擇職業、分配屬性點並穿上裝備，集中查看屬性、基礎數值與裝備需求。')}</p></div></section>
     <div className="content page-body build-page">
-      <div className="build-toolbar"><SelectControl className="planner-select" label={copy(lang,'职业','Class','職業')} value={classId} onChange={setClassId} options={classes.map(hero=>({value:hero.id,label:pick(hero.name,lang)}))}/><label className="level-input"><span>{copy(lang,'角色等级','Character level','角色等級')}</span><input type="number" min="1" max="100" value={level} onChange={event=>setLevel(Math.max(1,Math.min(100,Number(event.target.value)||1)))}/></label><button className="reset-build" onClick={reset}><RotateCcw size={16}/>{copy(lang,'重置','Reset','重設')}</button></div>
+      <div className="build-toolbar"><SelectControl className="planner-select" label={copy(lang,'职业','Class','職業')} value={classId} onChange={setClassId} options={classes.map(hero=>({value:hero.id,label:pick(hero.name,lang)}))}/><label className="level-input"><span>{copy(lang,'角色等级','Character level','角色等級')}</span><input type="number" min="1" max="100" value={level} onChange={event=>setLevel(Math.max(1,Math.min(100,Number(event.target.value)||1)))}/></label><div className="build-transfer-actions"><button className="import-build" disabled={!items.length} onClick={()=>setTransfer({mode:'import',text:'',message:''})}><ClipboardPaste size={16}/>{copy(lang,'导入','Import','匯入')}</button><button className="export-build" onClick={exportBuild}><ClipboardCopy size={16}/>{copy(lang,'导出','Export','匯出')}</button></div><button className="reset-build" onClick={reset}><RotateCcw size={16}/>{copy(lang,'重置','Reset','重設')}</button></div>
       <div className="build-layout"><section className="paper-doll"><header><div><span>{copy(lang,'装备栏','Equipment','裝備欄')}</span><h2>{pick(classes.find(hero=>hero.id===classId)?.name||classes[0].name,lang)}</h2></div><strong>{equipped.length} / 12</strong></header><div className="slot-grid">{slots.map(slot=>{const item=loadout[slot]?byId.get(loadout[slot] as string):null;const locked=slot==='off'&&Boolean(loadout.main&&twoHanded.has(byId.get(loadout.main)?.subtype||''));const unmet=Boolean(item&&!requirementsBySlot.get(slot)?.ok);const socketCount=item?buildSocketCount(item):0;const socketValues=item?(socketLoadout[slot]||[]).slice(0,socketCount):[];const filledSockets=socketValues.filter(Boolean).length;return <div key={slot} className={`gear-slot${item?' filled':''}${locked?' disabled':''}${unmet?' unmet':''}`}><span className="slot-label">{slotName(slot,lang)}</span>{item?<><button className="slot-preview" onClick={()=>{setCandidate(null);setPreviewSlot(slot)}} aria-label={copy(lang,`速览${pick(item.name,lang)}`,`Quick view: ${pick(item.name,lang)}`,`快速預覽：${pick(item.name,lang)}`)}><img className={`rarity-border ${item.rarity}`} src={asset(item.iconPath)} alt=""/><span className="slot-item"><b>{pick(item.name,lang)} <NgBadge tier={item.ngTier}/></b><small>Lv {item.level}</small>{socketCount>0&&<span className="slot-socket-state" aria-label={copy(lang,`${filledSockets}/${socketCount} 个孔已镶嵌`,`${filledSockets} of ${socketCount} sockets filled`,`${filledSockets}/${socketCount} 個孔已鑲嵌`)}><Gem size={11}/><span>{filledSockets}/{socketCount}</span><i>{Array.from({length:socketCount},(_,index)=><em className={socketValues[index]?'filled':''} key={index}/>)}</i></span>}{unmet&&<span className="slot-unmet"><CircleAlert size={13}/>{copy(lang,'未满足需求','Requirements not met','未符合需求')}</span>}</span><Eye className="slot-peek" size={15}/></button><button className="remove-item" onClick={()=>{setLoadout(current=>({...current,[slot]:null}));setSocketLoadout(current=>({...current,[slot]:[]}));if(previewSlot===slot)setPreviewSlot(null)}} aria-label={copy(lang,`移除${pick(item.name,lang)}`,`Remove ${pick(item.name,lang)}`,`移除${pick(item.name,lang)}`)}><X size={15}/></button></>:<button className="slot-empty" disabled={locked} onClick={()=>{setPicker(slot);setQuery('')}}>{locked?copy(lang,'双手武器占用','Occupied by two-hand weapon','雙手武器已占用'):copy(lang,'选择装备','Choose item','選擇裝備')}</button>}</div>})}</div></section>
         <aside className="build-inspector"><section className="allocation-card"><header><div><span>{copy(lang,'属性加点','Attributes','屬性加點')}</span><b className={spent>available?'over':''}>{spent} / {available}</b></div><div className="point-track"><i style={{width:`${Math.min(100,available?spent/available*100:0)}%`}}/></div></header>{(Object.keys(statNames) as Stat[]).map(stat=><label className={`stat-allocation ${stat}`} key={stat}><span><b>{pick(statNames[stat],lang)}</b><small>{classBases[classId][stat]} + {gearStats[stat]} {copy(lang,'装备','gear','裝備')}</small></span><input aria-label={pick(statNames[stat],lang)} type="number" min="0" max="495" value={allocated[stat]} onChange={event=>setAllocated(current=>({...current,[stat]:Math.max(0,Math.min(495,Number(event.target.value)||0))}))}/><strong>{stats[stat]}</strong></label>)}{spent>available&&<p className="build-warning">{copy(lang,`超出当前等级可分配点数 ${spent-available} 点。`,`Allocation exceeds the level limit by ${spent-available}.`,`超出目前等級可分配的點數 ${spent-available} 點。`)}</p>}</section>
           <section className="derived-card"><h2>{copy(lang,'完整属性','Full stat overview','完整屬性')}</h2><div className="derived-grid"><div><span>{copy(lang,'武器基础伤害','Base weapon damage','武器基礎傷害')}</span><b>{damage[0]||damage[1]?`${Math.round(damage[0])}–${Math.round(damage[1])}`:'—'}</b></div><div><span>{copy(lang,'武器伤害加成','Weapon damage bonus','武器傷害加成')}</span><b>+{weaponDamageBonus.toFixed(1)}%</b></div><div><span>{copy(lang,'基础护甲','Base armor','基礎護甲')}</span><b>{armor[0]||armor[1]?`${Math.round(armor[0])}–${Math.round(armor[1])}`:'—'}</b></div><div><span>{copy(lang,'护甲加成','Armor bonus','護甲加成')}</span><b>+{armorBonus.toFixed(1)}%</b></div><div><span>{copy(lang,'暴击率','Critical-hit chance','爆擊率')}</span><b>{criticalChance.toFixed(1)}%</b></div><div><span>{copy(lang,'暴击伤害加成','Critical damage bonus','爆擊傷害加成')}</span><b>+{criticalDamage.toFixed(1)}%</b></div><div><span>{copy(lang,'额外生命','Added health','額外生命')}</span><b>+{Math.round(addedHealth)}{addedHealthPercent?` · +${addedHealthPercent}%`:''}</b></div><div><span>{copy(lang,'闪避率','Dodge chance','閃避率')}</span><b>{dodgeChance.toFixed(1)}%</b></div><div><span>{copy(lang,'额外法力','Added mana','額外法力')}</span><b>+{addedMana.toFixed(1)}{addedManaPercent?` · +${addedManaPercent}%`:''}</b></div><div><span>{copy(lang,'专注伤害加成','Focus damage bonus','專注傷害加成')}</span><b>+{focusDamageBonus.toFixed(1)}%</b></div><div><span>{copy(lang,'格挡率','Block chance','格擋率')}</span><b>{blockChance==null?'—':`${blockChance.toFixed(1)}%`}</b></div><div><span>{copy(lang,'处决率','Execute chance','處決率')}</span><b>{executeChance.toFixed(1)}%</b></div><div><span>{copy(lang,'全伤害增加','All damage bonus','全傷害增加')}</span><b>+{allDamage.toFixed(1)}%</b></div><div><span>{copy(lang,'全伤害减免','All damage reduction','全傷害減免')}</span><b>{allDamageReduction.toFixed(1)}%</b></div></div></section>
@@ -282,6 +423,8 @@ export function BuildsPage({lang,items}:{lang:Lang;items:PlannerEquipment[]}){
     </div>}
     {picker&&<div className="picker-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setPicker(null)}}><section className="item-picker"><header><div><span>{slotName(picker,lang)}</span><h2>{copy(lang,'选择装备','Choose equipment','選擇裝備')}</h2></div><button onClick={()=>setPicker(null)} aria-label={copy(lang,'关闭','Close','關閉')}><X/></button></header><label className="picker-search"><Search size={17}/><input autoFocus value={query} onChange={event=>setQuery(event.target.value)} placeholder={copy(lang,'搜索装备名称…','Search equipment…','搜尋裝備名稱…')}/></label><div className="picker-list"><button className="clear-slot" onClick={()=>{setLoadout(current=>({...current,[picker]:null}));setSocketLoadout(current=>({...current,[picker]:[]}));setPicker(null)}}>{copy(lang,'清空这个栏位','Clear this slot','清除此欄位')}</button>{pickerItems.map(item=><button key={item.id} onClick={()=>choose(item)}><img className={`rarity-border ${item.rarity}`} src={asset(item.iconPath)} alt=""/><span><b>{pick(item.name,lang)} <NgBadge tier={item.ngTier}/></b><small>Lv {item.level}{item.set?` · ${pick(item.set,lang)}`:''}</small></span><em className={`rarity-dot ${item.rarity}`}/></button>)}{!pickerItems.length&&<p>{copy(lang,'没有匹配装备。','No matching equipment.','沒有符合的裝備。')}</p>}</div></section></div>}
     {gemPicker&&gemPickerItem&&<div className="picker-backdrop gem-picker-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget){setGemPicker(null);setGemQuery('');setPreviewSlot(gemPicker.slot)}}}><section className="item-picker gem-picker"><header><div><span>{slotName(gemPicker.slot,lang)} · {copy(lang,`第 ${gemPicker.index+1} 孔`,`Socket ${gemPicker.index+1}`,`第 ${gemPicker.index+1} 孔`)}</span><h2>{copy(lang,'选择宝石','Choose gem','選擇寶石')}</h2></div><button onClick={()=>{setGemPicker(null);setGemQuery('');setPreviewSlot(gemPicker.slot)}} aria-label={copy(lang,'关闭','Close','關閉')}><X/></button></header><label className="picker-search"><Search size={17}/><input autoFocus value={gemQuery} onChange={event=>setGemQuery(event.target.value)} placeholder={copy(lang,'搜索宝石名称或效果…','Search gem name or effect…','搜尋寶石名稱或效果…')}/></label><div className="picker-list">{gemPickerItems.map(gem=>{const effects=activeGemEffects(gem,gemPickerItem);return <button key={gem.id} onClick={()=>chooseGem(gem)}><img className={`rarity-border ${gem.rarity}`} src={asset(gem.iconPath)} alt=""/><span><b>{pick(gem.name,lang)} <NgBadge tier={gem.ngTier}/></b><small>Lv {gem.level} · {effects.map(effect=>effect.text?pick(effect.text,lang):effect.type).join(' · ')}</small></span><em className={`rarity-dot ${gem.rarity}`}/></button>})}{!gemPickerItems.length&&<p>{copy(lang,'没有适用于该装备的宝石。','No gems apply to this item.','沒有適用於此裝備的寶石。')}</p>}</div></section></div>}
+    {transfer&&<div className="build-transfer-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setTransfer(null)}}><section className="build-transfer-dialog" role="dialog" aria-modal="true" aria-labelledby="build-transfer-title"><header><div><span>{copy(lang,'配装文字','Build text','配裝文字')}</span><h2 id="build-transfer-title">{transfer.mode==='import'?copy(lang,'导入配装','Import build','匯入配裝'):copy(lang,'手动复制','Copy manually','手動複製')}</h2></div><button onClick={()=>setTransfer(null)} aria-label={copy(lang,'关闭','Close','關閉')}><X/></button></header><div className="build-transfer-body"><p>{transfer.mode==='import'?copy(lang,'粘贴其他玩家分享的配装文字。','Paste build text shared by another player.','貼上其他玩家分享的配裝文字。'):copy(lang,'复制下方文字即可分享这套配装。','Copy the text below to share this build.','複製下方文字即可分享這套配裝。')}</p><textarea autoFocus spellCheck={false} readOnly={transfer.mode==='export'} value={transfer.text} onFocus={event=>transfer.mode==='export'&&event.currentTarget.select()} onChange={event=>setTransfer({...transfer,text:event.target.value,message:''})} placeholder={transfer.mode==='import'?copy(lang,'在此粘贴配装文字…','Paste build text here…','在此貼上配裝文字…'):undefined}/>{transfer.message&&<p className="transfer-message" role="status"><CircleAlert size={16}/>{transfer.message}</p>}</div><footer>{transfer.mode==='import'&&<button className="paste-build" onClick={pasteBuild}><ClipboardPaste size={16}/>{copy(lang,'从剪贴板粘贴','Paste from clipboard','從剪貼簿貼上')}</button>}<button className="transfer-primary" onClick={transfer.mode==='import'?importBuild:retryCopy}>{transfer.mode==='import'?copy(lang,'导入配装','Import build','匯入配裝'):copy(lang,'再次复制','Copy again','再次複製')}</button></footer></section></div>}
+    {notice&&<div className="build-snackbar" role="status" aria-live="polite">{notice}</div>}
   </>
 }
 
