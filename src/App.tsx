@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowRight, BookOpen, ChevronLeft, ChevronRight, Compass, Globe2,
+  ArrowRight, BookOpen, ChevronLeft, ChevronRight, CircleDollarSign, Compass, Globe2,
   Hammer, Info, Menu, Search, Shield, SlidersHorizontal, Swords, X, Zap,
 } from 'lucide-react'
 import { classes, statInfo } from './data'
 import { isChinese, localeOptions, pick, tr, type UIKey } from './i18n'
-import { BuildsPage, GamblingPage } from './planners'
+import { BuildsPage, GamblingPage, gambleTypeForEquipment } from './planners'
 import { SelectControl } from './SelectControl'
 import type { ItemCategory, Lang, LocalText, StatKey } from './types'
 
@@ -142,6 +142,13 @@ function App(){
     setPage(next);setMobileOpen(false);setSearchOpen(false)
     window.scrollTo({top:0,behavior:'smooth'})
   }
+  const openGambling=(item:DbEquipment)=>{
+    const type=gambleTypeForEquipment(item.category,item.subtype)
+    if(!type)return
+    window.location.hash=`/gambling/${type}/${item.level}/${item.sockets}`
+    setPage('gambling');setMobileOpen(false);setSearchOpen(false)
+    window.scrollTo({top:0,behavior:'smooth'})
+  }
   const openClass=(id:string)=>{setClassId(id);setSkillFocus(null);go('classes')}
   const openSkill=(focus:SkillFocus)=>{setClassId(focus.classId);setSkillFocus(focus);go('classes')}
 
@@ -152,7 +159,7 @@ function App(){
       {page==='home'&&<Home lang={lang} go={go} onSearch={()=>setSearchOpen(true)} onClass={openClass} data={siteData}/>}
       {page==='classes'&&<ClassesPage lang={lang} classId={classId} setClassId={setClassId} classSkills={siteData.classSkills} skillGraphs={siteData.skillGraphs} focus={skillFocus}/>}
       {page==='mechanics'&&<MechanicsPage lang={lang}/>}
-      {page==='items'&&<ItemsPage lang={lang} items={siteData.equipment}/>}
+      {page==='items'&&<ItemsPage lang={lang} items={siteData.equipment} onGamble={openGambling}/>}
       {page==='builds'&&<BuildsPage lang={lang} items={siteData.equipment}/>}
       {page==='gambling'&&<GamblingPage lang={lang}/>}
       {page==='spells'&&<SpellsPage lang={lang} spells={siteData.spellBooks}/>}
@@ -349,21 +356,23 @@ const classRequirementName=(requirement:string,lang:Lang)=>{
 const ngLabel=(tier:number)=>tier===1?'NG+':tier>1?`NG+${tier}`:null
 function NgBadge({tier}:{tier:number}){const label=ngLabel(tier);return label?<span className="ng-badge">{label}</span>:null}
 
-function ItemsPage({lang,items}:{lang:Lang;items:DbEquipment[]}){
+function ItemsPage({lang,items,onGamble}:{lang:Lang;items:DbEquipment[];onGamble:(item:DbEquipment)=>void}){
   const [category,setCategory]=useState<'all'|ItemCategory>('all');const [rarity,setRarity]=useState<'all'|Rarity>('all');const [query,setQuery]=useState('');const [level,setLevel]=useState('all');const [currentPage,setCurrentPage]=useState(1);const [selected,setSelected]=useState<DbEquipment|null>(null)
   const filtered=useMemo(()=>items.filter(item=>(category==='all'||item.category===category)&&(rarity==='all'||item.rarity===rarity)&&(level==='all'||(level==='100'?item.level>=100:item.level>=Number(level)&&item.level<Number(level)+20))&&(`${allText(item.name)} ${ngLabel(item.ngTier)||''} ${item.subtype} ${item.set?allText(item.set):''} ${item.effects.map(effect=>effect.text?allText(effect.text):'').join(' ')}`).toLowerCase().includes(query.toLowerCase())),[items,category,rarity,level,query])
   useEffect(()=>setCurrentPage(1),[category,rarity,level,query]);const perPage=40;const pages=Math.max(1,Math.ceil(filtered.length/perPage));const rows=filtered.slice((currentPage-1)*perPage,currentPage*perPage)
   const categoryKey=(value:string):UIKey=>value==='weapon'?'weapon':value==='armor'?'armorCat':value==='trinket'?'trinket':value==='pet'?'petGear':value==='socketable'?'socketable':'all'
   return <><PageHeader section={tr(lang,'navItems')} title={tr(lang,'itemsTitle')}>{copy(lang,'按名称、类型、稀有度、等级或物品效果查找装备。','Find equipment by name, type, rarity, level or item effect.','依名稱、類型、稀有度、等級或裝備效果搜尋裝備。')}</PageHeader><div className="content page-body"><div className="data-toolbar"><label className="data-search"><Search size={16}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder={copy(lang,'搜索名称、类型、套装或效果…','Search name, type, set or effect…','搜尋名稱、類型、套裝或效果…')}/></label><SelectControl className="filter-select" label={copy(lang,'装备类型','Equipment type','裝備類型')} value={category} onChange={value=>setCategory(value as typeof category)} options={['all','weapon','armor','trinket','pet','socketable'].map(value=>({value,label:tr(lang,categoryKey(value))}))}/><SelectControl className="filter-select" label={copy(lang,'稀有度','Rarity','稀有度')} value={rarity} onChange={value=>setRarity(value as typeof rarity)} options={[{value:'all',label:tr(lang,'allRarity')},...(['rare','unique','legendary'] as Rarity[]).map(value=>({value,label:rarityName(value,lang)}))]}/><SelectControl className="filter-select" label={copy(lang,'装备等级','Item level','裝備等級')} value={level} onChange={setLevel} options={[{value:'all',label:copy(lang,'全部等级','All levels','所有等級')},...[0,20,40,60,80,100].map(value=>({value:String(value),label:`Lv ${value}${value<100?`–${value+19}`:'+'}`}))]}/></div>
-    <div className="result-meta"><span>{filtered.length.toLocaleString()} {tr(lang,'itemsFound')}</span><span>{copy(lang,`第 ${currentPage} / ${pages} 页`,`Page ${currentPage} of ${pages}`,`第 ${currentPage} / ${pages} 頁`)}</span></div>{!items.length?<Loading lang={lang}/>:<div className="table-scroll"><table className="data-table"><thead><tr><th>{copy(lang,'名称','Name','名稱')}</th><th>{copy(lang,'类型','Type','類型')}</th><th>{copy(lang,'稀有度','Rarity','稀有度')}</th><th>{tr(lang,'level')}</th><th>{copy(lang,'职业','Class','職業')}</th><th/></tr></thead><tbody>{rows.map(item=><tr key={item.id} onClick={()=>setSelected(item)}><td><div className="item-name"><img className={`rarity-border ${item.rarity}`} src={asset(item.iconPath)} alt=""/><span><b>{pick(item.name,lang)} <NgBadge tier={item.ngTier}/></b>{item.set&&<small>{pick(item.set,lang)}</small>}</span></div></td><td>{subtypeName(item.subtype,lang)}</td><td><div className="item-badges"><span className={`rarity ${item.rarity}`}>{rarityName(item.rarity,lang)}</span>{item.set&&<span className="set-tag">{copy(lang,'套装','Set','套裝')}</span>}</div></td><td>{item.level}</td><td>{item.classRequirement?classRequirementName(item.classRequirement,lang):''}</td><td><ChevronRight size={14}/></td></tr>)}</tbody></table></div>}<Pagination page={currentPage} pages={pages} setPage={setCurrentPage} lang={lang}/></div>{selected&&<EquipmentDrawer item={selected} variants={selected.ngVariantOf?items.filter(item=>item.ngVariantOf===selected.ngVariantOf):items.filter(item=>!item.ngVariantOf&&item.name.en===selected.name.en&&item.subtype===selected.subtype)} lang={lang} onClose={()=>setSelected(null)}/>}</>
+    <div className="result-meta"><span>{filtered.length.toLocaleString()} {tr(lang,'itemsFound')}</span><span>{copy(lang,`第 ${currentPage} / ${pages} 页`,`Page ${currentPage} of ${pages}`,`第 ${currentPage} / ${pages} 頁`)}</span></div>{!items.length?<Loading lang={lang}/>:<div className="table-scroll"><table className="data-table"><thead><tr><th>{copy(lang,'名称','Name','名稱')}</th><th>{copy(lang,'类型','Type','類型')}</th><th>{copy(lang,'稀有度','Rarity','稀有度')}</th><th>{tr(lang,'level')}</th><th>{copy(lang,'职业','Class','職業')}</th><th/></tr></thead><tbody>{rows.map(item=><tr key={item.id} onClick={()=>setSelected(item)}><td><div className="item-name"><img className={`rarity-border ${item.rarity}`} src={asset(item.iconPath)} alt=""/><span><b>{pick(item.name,lang)} <NgBadge tier={item.ngTier}/></b>{item.set&&<small>{pick(item.set,lang)}</small>}</span></div></td><td>{subtypeName(item.subtype,lang)}</td><td><div className="item-badges"><span className={`rarity ${item.rarity}`}>{rarityName(item.rarity,lang)}</span>{item.set&&<span className="set-tag">{copy(lang,'套装','Set','套裝')}</span>}</div></td><td>{item.level}</td><td>{item.classRequirement?classRequirementName(item.classRequirement,lang):''}</td><td><ChevronRight size={14}/></td></tr>)}</tbody></table></div>}<Pagination page={currentPage} pages={pages} setPage={setCurrentPage} lang={lang}/></div>{selected&&<EquipmentDrawer item={selected} variants={selected.ngVariantOf?items.filter(item=>item.ngVariantOf===selected.ngVariantOf):items.filter(item=>!item.ngVariantOf&&item.name.en===selected.name.en&&item.subtype===selected.subtype)} lang={lang} onClose={()=>setSelected(null)} onGamble={onGamble}/>}</>
 }
 function Pagination({page,pages,setPage,lang}:{page:number;pages:number;setPage:(page:number)=>void;lang:Lang}){if(pages<=1)return null;return <div className="pagination"><button disabled={page<=1} onClick={()=>setPage(page-1)}><ChevronLeft size={15}/>{copy(lang,'上一页','Previous','上一頁')}</button><span>{page} / {pages}</span><button disabled={page>=pages} onClick={()=>setPage(page+1)}>{copy(lang,'下一页','Next','下一頁')}<ChevronRight size={15}/></button></div>}
 
-function EquipmentDrawer({item,variants,lang,onClose}:{item:DbEquipment;variants:DbEquipment[];lang:Lang;onClose:()=>void}){
+function EquipmentDrawer({item,variants,lang,onClose,onGamble}:{item:DbEquipment;variants:DbEquipment[];lang:Lang;onClose:()=>void;onGamble:(item:DbEquipment)=>void}){
   const [currentId,setCurrentId]=useState(item.id);const current=variants.find(variant=>variant.id===currentId)??item
   const hasRequirements=current.requiredLevel>0||current.requirements.length>0||Boolean(current.classRequirement)
+  const gambleType=gambleTypeForEquipment(current.category,current.subtype)
   return <div className="drawer-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}><aside className="detail-drawer"><button className="drawer-close" onClick={onClose} aria-label={tr(lang,'close')}><X/></button><div className="drawer-title"><img className={`rarity-border ${current.rarity}`} src={asset(current.iconPath)} alt=""/><div><div className="item-badges"><span className={`rarity ${current.rarity}`}>{rarityName(current.rarity,lang)}</span>{current.set&&<span className="set-tag">{copy(lang,'套装','Set','套裝')}</span>}</div><h2>{pick(current.name,lang)} <NgBadge tier={current.ngTier}/></h2>{originalName(current.name,lang)&&<small className="original-name">{current.name.en}</small>}<p className="item-level-type">Lv.{current.level} {subtypeName(current.subtype,lang)}</p></div></div>
     {variants.length>1&&<div className="variant-field"><span>{copy(lang,'选择变体','Choose variant','選擇變體')}</span><SelectControl className="variant-select" label={copy(lang,'选择变体','Choose variant','選擇變體')} value={currentId} onChange={setCurrentId} options={[...variants].sort((a,b)=>a.level-b.level).map(variant=>({value:variant.id,label:`${ngLabel(variant.ngTier)?`${ngLabel(variant.ngTier)} · `:''}Lv ${variant.level} · ${rarityName(variant.rarity,lang)}`}))}/></div>}
+    {gambleType&&<button className="detail-gamble-link" onClick={()=>onGamble(current)}><CircleDollarSign size={21}/><span><b>{copy(lang,'计算赌博价格','Calculate gambling price','計算賭博價格')}</b><small>{copy(lang,'带入类型、物品等级和原有孔数','Use its type, item level and original sockets','帶入類型、物品等級與原有孔數')}</small></span><ArrowRight size={17}/></button>}
     {current.description&&<blockquote>{pick(current.description,lang)}</blockquote>}
     {hasRequirements&&<DetailSection title={copy(lang,'装备需求','Requirements','裝備需求')}><div className="requirement-options">{current.requiredLevel>0&&<strong className="requirement-level">Lv.{current.requiredLevel}</strong>}{current.requiredLevel>0&&current.requirements.length>0&&<span className="requirement-or">{copy(lang,'或','Or','或')}</span>}{current.requirements.length>0&&<div className="requirement-row">{current.requirements.map((requirement,index)=><span key={`${requirement.stat}-${index}`}>{index>0&&<em>{copy(lang,'且','and','且')}</em>}<StatPill stat={requirement.stat}/><b>{requirement.value}</b></span>)}</div>}</div>{current.classRequirement&&<p className="requirement-class"><strong>{copy(lang,'职业：','Class:','職業：')}</strong>{classRequirementName(current.classRequirement,lang)}</p>}</DetailSection>}
     <EquipmentBaseValues item={current} lang={lang}/>

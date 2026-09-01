@@ -224,6 +224,7 @@ td { padding: 14px 15px; border-top: 1px solid var(--line); font-size: 14px; }
 .variant-field { margin: 18px 0; }
 .variant-field > span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 13px; }
 .variant-select { width: 100%; background: var(--bg); }
+.detail-gamble-link { width:100%;min-height:64px;margin:18px 0;padding:10px 13px;display:grid;grid-template-columns:24px minmax(0,1fr) 18px;align-items:center;gap:10px;border:1px solid #c88772;border-radius:9px;background:var(--accent-soft);color:var(--accent);text-align:left;cursor:pointer; }.detail-gamble-link > span { min-width:0; }.detail-gamble-link b,.detail-gamble-link small { display:block; }.detail-gamble-link b { font-size:14px; }.detail-gamble-link small { margin-top:2px;color:#77574c;font-size:11px;line-height:1.4; }.detail-gamble-link:hover { border-color:var(--accent);background:#f1ddd4; }.detail-gamble-link:focus-visible { outline:3px solid rgba(170,74,48,.2);outline-offset:2px; }
 .detail-drawer blockquote { margin: 20px 0; padding: 14px 16px; border-left: 3px solid var(--accent); background: #f1e9df; color: #56514b; font: italic 16px/1.65 serif; }
 .detail-grid { margin: 20px 0; display: grid; grid-template-columns: repeat(4,1fr); border: 1px solid var(--line); border-radius: 7px; }
 .detail-grid div { padding: 12px; border-right: 1px solid var(--line); }.detail-grid div:last-child { border-right: 0; }
