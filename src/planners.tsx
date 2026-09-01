@@ -153,7 +153,10 @@ const isClassCompatible=(item:PlannerEquipment,classId:string)=>!item.classRequi
 const fixedEffectValue=(effect:PlannerEffect)=>effect.activation==='PASSIVE'&&effect.min!=null&&effect.min===effect.max?effect.min:0
 const socketTargetFor=(item:PlannerEquipment):'weapon'|'armor'=>item.category==='weapon'?'weapon':'armor'
 const activeGemEffects=(gem:PlannerEquipment,item:PlannerEquipment)=>gem.effects.filter(effect=>effect.socketTargets?.includes(socketTargetFor(item)))
-const buildSocketCount=(item:PlannerEquipment)=>item.rarity==='rare'?4:item.rarity==='unique'||item.rarity==='legendary'?Math.max(2,item.sockets):item.sockets
+const buildSocketCount=(item:PlannerEquipment)=>{
+  const rarityMinimum=item.rarity==='rare'?(item.category==='weapon'?4:2):item.rarity==='unique'||item.rarity==='legendary'?2:0
+  return Math.max(rarityMinimum,item.sockets)
+}
 
 const numberToken=/[+-]?(?:\d+(?:\.\d+)?|\.\d+)/g
 const nonStackingEffect=/^(?:ADD TRIGGERABLE|CAST SKILL(?:\s|$)|MISSILE REFLECT$)/
