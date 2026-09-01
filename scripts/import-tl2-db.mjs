@@ -581,13 +581,15 @@ const skillLevelsBySkill = groupBy(query(`
   ORDER BY sl.skill_id, sl.level, sl.node_path
 `), (row) => row.skill_id)
 const effectsBySkillLevel = groupBy(query(`
-  SELECT sla.skill_level_id, sla.affix_name, ae.effect_name, ae.effect_type, ae.activation,
+  SELECT sla.skill_level_id, sla.affix_name, sla.affix_level, sla.context_path,
+    ae.effect_name, ae.effect_type, ae.activation,
     ae.duration, ae.chance, ae.min_value, ae.max_value, ae.properties_json
   FROM skill_level_affixes sla
   JOIN skill_levels sl ON sl.id=sla.skill_level_id
   JOIN skills s ON s.id=sl.skill_id
   LEFT JOIN affix_effects ae ON ae.affix_id=sla.resolved_affix_id
   WHERE s.skill_audience='player'
+    AND sla.context_path NOT LIKE '%AFFIXESREMOVE%'
   ORDER BY sla.skill_level_id, sla.ordinal, ae.ordinal
 `), (row) => row.skill_level_id)
 const localizedSkillProperties = groupBy(query(`
@@ -647,11 +649,26 @@ const skillEffectFromProperties = (properties, fallback = {}) => {
     const value = propertyValue(propertyName)
     return Number.isFinite(Number(value)) ? Number(value) : fallbackValue ?? null
   }
-  const minimum = valueFrom(1, fallback.min_value)
-  const maximum = valueFrom(2, fallback.max_value ?? minimum)
-  const values = Object.fromEntries([1, 2, 3, 4, 5].map((slot) => [slot, valueFrom(slot, null)]))
+  const rawMinimum = valueFrom(1, fallback.min_value)
+  const rawMaximum = valueFrom(2, fallback.max_value ?? rawMinimum)
+  const rawValues = Object.fromEntries([1, 2, 3, 4, 5].map((slot) => [slot, valueFrom(slot, null)]))
   const durationValue = propertyValue('DURATION') ?? fallback.duration
   const duration = Number.isFinite(Number(durationValue)) ? Number(durationValue) : 0
+  const useOwnerLevel = Boolean(propertyValue('USEOWNERLEVEL'))
+  const noGraph = Boolean(propertyValue('NOGRAPH'))
+  const graphOverride = noGraph ? null : clean(propertyValue('GRAPHOVERRIDE')).toUpperCase() || null
+  const affixLevel = fallback.affix_level == null ? null : number(fallback.affix_level)
+  const affixScale = !useOwnerLevel && graphOverride && affixLevel != null ? graphValue(graphOverride, affixLevel) : null
+  if (!useOwnerLevel && graphOverride && affixScale == null) {
+    throw new Error(`Missing skill effect graph ${graphOverride} at affix level ${affixLevel}`)
+  }
+  const scaleAffixValue = (value) => value == null || affixScale == null ? value : affixScale * value / 100
+  const minimum = scaleAffixValue(rawMinimum)
+  const maximum = scaleAffixValue(rawMaximum)
+  const values = Object.fromEntries(Object.entries(rawValues).map(([slot, value]) => [
+    slot,
+    number(slot) <= 2 ? scaleAffixValue(value) : value,
+  ]))
   const lowerBound = template.min_value_bound
   const upperBound = template.max_value_bound
   const good = minimum == null || lowerBound == null || upperBound == null
@@ -665,8 +682,9 @@ const skillEffectFromProperties = (properties, fallback = {}) => {
     template[`${variant}_zh_tw`] || template[`${baseVariant}_zh_tw`],
   )
   if (!templateText.en) return null
-  const useOwnerLevel = Boolean(propertyValue('USEOWNERLEVEL'))
-  const scalingGraph = useOwnerLevel ? clean(templateProperty('GRAPH1')).toUpperCase() || null : null
+  const scalingGraph = useOwnerLevel
+    ? graphOverride || clean(templateProperty('GRAPH1')).toUpperCase() || null
+    : null
   return {
     type,
     name: clean(fallback.effect_name || propertyValue('NAME')),

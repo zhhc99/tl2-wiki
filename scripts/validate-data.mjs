@@ -99,6 +99,34 @@ const supportedSkillTokens=new Set(['[VALUE]','[VALUE_OT]','[VALUE1ASDURATION]',
 assert(skillEffects.every(effect=>Object.values(effect.template).every(text=>[...text.matchAll(/\[[A-Z0-9_]+\]/g)].every(match=>supportedSkillTokens.has(match[0])))),'Skill display templates contain an unsupported placeholder')
 assert(Object.keys(skillGraphs).length>=6&&Object.values(skillGraphs).every(points=>Array.isArray(points)&&points.length>0),'Skill scaling graph data is incomplete')
 assert(skillEffects.every(effect=>!effect.scalingGraph||skillGraphs[effect.scalingGraph]),'A skill effect references a missing scaling graph')
+const skillEffect=(name,rank,type,damageType)=>skills.find(skill=>skill.name.en===name)?.ranks[rank-1]?.effects.find(effect=>effect.type===type&&(!damageType||effect.damageType===damageType))
+const masteryEndpoints=[
+  ['Charge Mastery','PERCENT CHARGE BAR DECAY RATE',null,-6,-90],
+  ['Charge Mastery','PERCENT CHARGING BONUS',null,4,60],
+  ['Cold Steel Mastery','PERCENT DAMAGE BONUS','PHYSICAL',2,30],
+  ['Cold Steel Mastery','PERCENT DAMAGE BONUS','ICE',6,90],
+  ['Executioner','PERCENT DUAL WIELDING ATTACK',null,2,30],
+  ['Heavy Lifting','PERCENT ATTACK SPEED',null,2,30],
+  ['Heavy Lifting','STUN',null,2,30],
+  ['Bulwark','PERCENT ARMOR BONUS',null,2,30],
+  ['Fire and Spark','PERCENT DAMAGE BONUS','FIRE',5,75],
+  ['Fire and Spark','PERCENT DAMAGE BONUS','ELECTRIC',5,75],
+  ['Akimbo','DUAL WIELDING BONUS','PHYSICAL',2,30],
+  ['Akimbo','PERCENT DUAL WIELDING ATTACK',null,2,30],
+  ['Dodge Mastery','DODGE CHANCE BONUS',null,4,32],
+  ['Long Range Mastery','PERCENT RANGEDDAMAGE','ALL',2,30],
+  ['Long Range Mastery','MISSILE RANGE BONUS',null,1/3,5],
+  ['Master of the Elements','PERCENT DAMAGE BONUS','ICE',2,30],
+  ['Master of the Elements','PERCENT DAMAGE BONUS','FIRE',2,30],
+  ['Master of the Elements','PERCENT DAMAGE BONUS','POISON',4,60],
+  ['Master of the Elements','PERCENT DAMAGE BONUS','ELECTRIC',2,30],
+  ['Poison Burst','CAST SKILL ON DEATH FROM EFFECT OWNER',null,12,68],
+]
+const nearlyEqual=(left,right)=>Math.abs(left-right)<1e-5
+assert(masteryEndpoints.every(([name,type,damageType,first,last])=>nearlyEqual(skillEffect(name,1,type,damageType)?.min,first)&&nearlyEqual(skillEffect(name,15,type,damageType)?.min,last)),'A mastery skill did not apply its affix-level graph override')
+const minionSkills=['Astral Ally','Wolf Shade','Gun Bot','Sledgebot','Spider Mines','Bane Breath','Shadowling Ammo','Shadowling Brute']
+assert(minionSkills.every(name=>skillEffect(name,1,'MINIONDAMAGE')?.scalingGraph==='DAMAGE_MINION_BYLEVEL'),'A minion skill did not apply its owner-level graph override')
+assert(skillEffect('Ravage',1,'ARMOR BONUS')?.scalingGraph==='ARMOR_MONSTER_BYLEVEL','Ravage did not apply its armor graph override')
 const rapidFire=skills.find(skill=>skill.name.en==='Rapid Fire')
 assert(rapidFire?.ranks[0].metrics.some(metric=>metric.kind==='manaPerSecond'&&metric.value===12),'Rapid Fire rank-one mana drain is missing')
 assert(rapidFire?.ranks[0].effects.some(effect=>effect.type==='ARMOR BONUS'&&effect.scalingGraph==='ARMOR_PLAYER_BYLEVEL_FORSET'),'Rapid Fire armor reduction is not linked to its player-level graph')
