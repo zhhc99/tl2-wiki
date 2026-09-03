@@ -79,6 +79,10 @@ assert(spells.every(row=>localeComplete(row.name)&&localeComplete(row.family)&&l
 assert(spells.every(row=>row.iconPath&&existsSync(publicPath(row.iconPath))),'Spell books have a missing icon file')
 assert(spells.filter(row=>row.name.zhCN!==row.name.en||row.name.zhTW!==row.name.en).length===meta.counts.localizedSpellBooks,'Spell-book locale count differs from meta.json')
 assert(meta.counts.localizedSpellBooks===194&&meta.gaps.spellBookNamesWithoutOfficialChinese===0&&meta.gaps.spellBooksWithoutOfficialChineseDescription===0,'Expected complete official spell-book locales')
+const unobtainableSpellFamilies=[...new Set(spells.filter(row=>row.unobtainable).map(row=>row.family.en))].sort()
+assert(spells.filter(row=>row.unobtainable).length===19,'Expected 19 unobtainable spell-book records')
+assert(unobtainableSpellFamilies.join('|')==='Critical Strikes|Identify Spell|Poison Cloud|Summon Aloe Gel|Summon Blood Skeleton|Summon Flaming Sword|Tunnelers|Waypoint Portal Spell|Whirling Flames','Unobtainable spell-book families differ from the verified list')
+assert(['Bee Swarm','Summon Blood Zombie','Web'].every(family=>spells.some(row=>row.family.en===family&&!row.unobtainable)),'An obtainable special spell was incorrectly tagged')
 
 assert(classes.length===4,'Expected four classes')
 assert(classes.every(group=>group.trees.length===3),'Expected three trees per class')

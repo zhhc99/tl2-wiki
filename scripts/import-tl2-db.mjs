@@ -31,6 +31,21 @@ const groupBy = (rows, key) => {
 }
 
 const spellBookSource = JSON.parse(readFileSync(resolve(projectDir, 'scripts/spell-books-source.json'), 'utf8'))
+// These definitions remain in the game data but cannot be obtained during normal play.
+// Whirling Flames and Tunnelers have zero spawn weight and no dedicated spawn-class entry;
+// the other families opt out of creation explicitly. Keep the records for data fidelity and
+// tag them so player-facing clients can omit them.
+const unobtainableSpellBookFamilies = new Set([
+  'Critical Strikes',
+  'Identify Spell',
+  'Poison Cloud',
+  'Summon Aloe Gel',
+  'Summon Blood Skeleton',
+  'Summon Flaming Sword',
+  'Tunnelers',
+  'Waypoint Portal Spell',
+  'Whirling Flames',
+])
 
 const itemRows = query(`
   SELECT i.*, sf.path AS source_path,
@@ -797,6 +812,7 @@ const spellBooks = spellBookSource.map((spell) => {
   )
   return {
     ...spell,
+    ...(unobtainableSpellBookFamilies.has(spell.family) ? { unobtainable: true } : {}),
     name: local(row.display_name_en, row.display_name_zh_cn, row.display_name_zh_tw),
     family: localizedFamily,
     level: number(row.item_level),

@@ -52,7 +52,7 @@ interface DbEquipment {
 }
 interface DbSpellBook {
   id: string; name: LocalText; family: LocalText; tier: number; school: 'offense'|'defense'|'summon'|'utility'
-  level: number; requiredLevel: number; description: LocalText; iconPath: string | null; sourceFile: string
+  level: number; requiredLevel: number; description: LocalText; iconPath: string | null; sourceFile: string; unobtainable?: true
 }
 interface DbSkillRank { rank:number; requiredLevel:number; metrics:{kind:SkillMetricKind;value:number;scalingGraph?:string|null}[]; effects:RawEffect[] }
 interface DbClassSkill {
@@ -114,7 +114,14 @@ function App(){
       fetch(`${base}data/skill-graphs.json`).then(r=>r.json()),
       fetch(`${base}data/phase-beasts.json`).then(r=>r.json()),
       fetch(`${base}data/meta.json`).then(r=>r.json()),
-    ]).then(([equipment,spellBooks,classSkills,skillGraphs,phaseBeasts,meta])=>setSiteData({equipment,spellBooks,classSkills,skillGraphs,phaseBeasts,meta})).catch(()=>setDataError(true))
+    ]).then(([equipment,spellBooks,classSkills,skillGraphs,phaseBeasts,meta])=>setSiteData({
+      equipment,
+      spellBooks:spellBooks.filter((spell:DbSpellBook)=>!spell.unobtainable),
+      classSkills,
+      skillGraphs,
+      phaseBeasts,
+      meta,
+    })).catch(()=>setDataError(true))
   },[])
   useEffect(()=>{
     const onHash=()=>setPage(pageFromHash())

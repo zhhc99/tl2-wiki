@@ -186,3 +186,11 @@ UI, 交互与细节修改:
 
 - 配装页面的搜索功能应该能搜索名称, 套装或效果.
 - 装备页面查看物品信息时, 如果不是宠物用品或镶嵌物, 则可以快速导航到对应赌博页面. 使用装备在数据库中的原有孔数.
+
+## 修改基于 adbc873
+
+问题修复:
+
+- 以下 spell 在游戏内无法获得, 仅存在数据. 将从数据库中提取的 spell 数据添加标签, 然后前端通过识别该标签来过滤 (直接不显示这些 spell).
+  - identify spell; waypoint portal spell; poison cloud; summon blood skeleton; summon aloe gel; summon flaming sword; critical strikes;
+  - 确认以下技能是否可获取: wirling flames, tunnelers, web, summon blood zombie, bee swarm. 将那些确认无法在游戏内掉落 (不含控制台) 的也打上上述标签.
