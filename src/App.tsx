@@ -4,83 +4,20 @@ import {
   Hammer, Info, Menu, Search, Shield, SlidersHorizontal, Swords, X, Zap,
 } from 'lucide-react'
 import { classes, statInfo } from './data'
-import { isChinese, localeOptions, pick, tr, type UIKey } from './i18n'
+import { allText, asset, ngLabel, type DbClassGroup, type DbClassSkill, type DbEquipment, type DbMeta, type DbPhaseBeast, type DbSkillRank, type DbSpellBook, type RawEffect, type Rarity, type SiteData, type SkillGraphs } from './domain'
+import { copy, isChinese, localeOptions, pick, tr, type UIKey } from './i18n'
 import { BuildsPage, GamblingPage, gambleTypeForEquipment } from './planners'
 import { NumberInput } from './NumberInput'
 import { SelectControl } from './SelectControl'
 import type { ItemCategory, Lang, LocalText, StatKey } from './types'
 
 type Page = 'home' | 'classes' | 'mechanics' | 'items' | 'builds' | 'gambling' | 'spells' | 'phases'
-type Rarity = 'normal' | 'rare' | 'unique' | 'legendary'
-type SkillKind = 'active' | 'passive'
-type SkillMetricKind = 'weaponDamagePct' | 'chargeScalePct' | 'manaCost' | 'manaPerSecond' | 'maxTargets' | 'projectiles'
-
-interface RawEffect {
-  type: string
-  name: string
-  activation: string
-  damageType: string
-  duration: number | null
-  chance: number | null
-  min: number | null
-  max: number | null
-  useOwnerLevel: boolean
-  template?: LocalText | null
-  displayName?: LocalText | null
-  values?: Record<string, number | null>
-  precision?: number
-  precisionMax?: number | null
-  scalingGraph?: string | null
-  text?: LocalText | null
-  renderStatus?: string
-  valueSemantic?: string
-  roundingMode?: string
-  socketTargets?: ('weapon'|'armor')[]
-}
-interface DbRawSetBonus extends RawEffect { pieces: number }
-interface DbEquipment {
-  id: string; slug: string; name: LocalText; internalName: string; category: ItemCategory; subtype: string
-  unitType: string; rarity: Rarity; rarityValue: number | null; level: number; requiredLevel: number
-  requirements: { stat: Exclude<StatKey, 'none'>; value: number }[]; sockets: number; speed: number | null
-  damagePerSecond: [number,number] | null
-  set: LocalText | null; description: LocalText | null; iconPath: string | null
-  setInternalName: string | null
-  maxSockets: number | null; blockChance: number | null; minimumDropLevel: number | null; maximumDropLevel: number | null
-  classRequirement: string | null; armor: Record<string, [number, number]>; damage: Record<string, [number, number]>
-  effects: RawEffect[]; rawSetBonuses: DbRawSetBonus[]
-  ngTier: number; ngVariantOf: string | null
-  panelFormulaVersion: string; sourceFile: string
-}
-interface DbSpellBook {
-  id: string; name: LocalText; family: LocalText; tier: number; school: 'offense'|'defense'|'summon'|'utility'
-  level: number; requiredLevel: number; description: LocalText; iconPath: string | null; sourceFile: string; unobtainable?: true
-}
-interface DbSkillRank { rank:number; requiredLevel:number; metrics:{kind:SkillMetricKind;value:number;scalingGraph?:string|null}[]; effects:RawEffect[] }
-interface DbClassSkill {
-  id:string; slug:string; name:LocalText; description:LocalText; requirement:LocalText|null; level:number; kind:SkillKind
-  maxRank:number; iconPath:string|null; cooldownMs:number|null; range:number|null
-  tiers:{rank:number;text:LocalText}[]; ranks:DbSkillRank[]
-}
-interface DbClassGroup { classId:string; trees:{treeId:string;skills:DbClassSkill[]}[] }
-interface DbPhaseChallenge { id:string; name:LocalText }
-interface DbPhaseBeast { id:string; act:number; region:LocalText; challenges:DbPhaseChallenge[] }
-interface DbMeta {
-  generatedAt:string
-  counts:{equipment:number;ngVariantGroups:number;ngVariantRecords:number;itemEffects:number;spellBooks:number;localizedSpellBooks:number;classSkills:number;skillRanks:number;phaseChallenges:number;icons:number}
-  gaps:Record<string,number>
-}
-type SkillGraphs = Record<string, [number, number][]>
-interface SiteData { equipment:DbEquipment[]; spellBooks:DbSpellBook[]; classSkills:DbClassGroup[]; skillGraphs:SkillGraphs; phaseBeasts:DbPhaseBeast[]; meta:DbMeta|null }
 interface SkillFocus { classId:string; skillId:string }
 interface ItemSearchRequest { query:string; key:number }
 
-const emptyData:SiteData={equipment:[],spellBooks:[],classSkills:[],skillGraphs:{},phaseBeasts:[],meta:null}
 const statLabels:Record<StatKey,string>={str:'STR',dex:'DEX',foc:'FOC',vit:'VIT',none:'—'}
 const text=(en:string,zhCN:string,zhTW=zhCN):LocalText=>({en,zhCN,zhTW})
-const copy=(lang:Lang,zhCN:string,en:string,zhTW=zhCN)=>lang==='en'?en:lang==='zh-TW'?zhTW:zhCN
 const plain=(value:string)=>value.replaceAll('**','')
-const asset=(path:string|null)=>path?`${import.meta.env.BASE_URL}${path}`:''
-const allText=(value:LocalText)=>`${value.en} ${value.zhCN} ${value.zhTW}`
 const originalName=(value:LocalText,lang:Lang)=>isChinese(lang)&&pick(value,lang)!==value.en?value.en:null
 
 const pageFromHash=():Page=>{
@@ -95,6 +32,16 @@ const initialLanguage=():Lang=>{
   if(browser.startsWith('zh-tw')||browser.startsWith('zh-hk')||browser.startsWith('zh-mo')) return 'zh-TW'
   return browser.startsWith('zh')?'zh-CN':'en'
 }
+const loadJson=async<T,>(path:string):Promise<T>=>{
+  const response=await fetch(path)
+  if(!response.ok)throw new Error(`Failed to load ${path}: HTTP ${response.status}`)
+  return response.json() as Promise<T>
+}
+const assertDataContract=(data:SiteData)=>{
+  if(data.meta.schemaVersion!==7)throw new Error(`Unsupported site-data schema: ${data.meta.schemaVersion}`)
+  if(!/^[a-f0-9]{64}$/.test(data.meta.sourceFingerprint))throw new Error('Invalid site-data source fingerprint')
+  if(data.equipment.length!==data.meta.counts.equipment)throw new Error('Equipment count does not match site metadata')
+}
 
 function App(){
   const [lang,setLang]=useState<Lang>(initialLanguage)
@@ -105,26 +52,23 @@ function App(){
   const [classId,setClassId]=useState('berserker')
   const [skillFocus,setSkillFocus]=useState<SkillFocus|null>(null)
   const [itemSearchRequest,setItemSearchRequest]=useState<ItemSearchRequest|null>(null)
-  const [siteData,setSiteData]=useState<SiteData>(emptyData)
+  const [siteData,setSiteData]=useState<SiteData|null>(null)
   const [dataError,setDataError]=useState(false)
 
   useEffect(()=>{
     const base=import.meta.env.BASE_URL
     Promise.all([
-      fetch(`${base}data/equipment.json`).then(r=>r.json()),
-      fetch(`${base}data/spell-books.json`).then(r=>r.json()),
-      fetch(`${base}data/class-skills.json`).then(r=>r.json()),
-      fetch(`${base}data/skill-graphs.json`).then(r=>r.json()),
-      fetch(`${base}data/phase-beasts.json`).then(r=>r.json()),
-      fetch(`${base}data/meta.json`).then(r=>r.json()),
-    ]).then(([equipment,spellBooks,classSkills,skillGraphs,phaseBeasts,meta])=>setSiteData({
-      equipment,
-      spellBooks:spellBooks.filter((spell:DbSpellBook)=>!spell.unobtainable),
-      classSkills,
-      skillGraphs,
-      phaseBeasts,
-      meta,
-    })).catch(()=>setDataError(true))
+      loadJson<DbEquipment[]>(`${base}data/equipment.json`),
+      loadJson<DbSpellBook[]>(`${base}data/spell-books.json`),
+      loadJson<DbClassGroup[]>(`${base}data/class-skills.json`),
+      loadJson<SkillGraphs>(`${base}data/skill-graphs.json`),
+      loadJson<DbPhaseBeast[]>(`${base}data/phase-beasts.json`),
+      loadJson<DbMeta>(`${base}data/meta.json`),
+    ]).then(([equipment,spellBooks,classSkills,skillGraphs,phaseBeasts,meta])=>{
+      const data={equipment,spellBooks:spellBooks.filter(spell=>!spell.unobtainable),classSkills,skillGraphs,phaseBeasts,meta}
+      assertDataContract(data)
+      setSiteData(data)
+    }).catch(()=>setDataError(true))
   },[])
   useEffect(()=>{
     const onHash=()=>setPage(pageFromHash())
@@ -166,7 +110,7 @@ function App(){
   return <div className="app-shell">
     <Header lang={lang} setLang={setLang} page={page} go={go} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} onSearch={()=>setSearchOpen(true)}/>
     {dataError&&<div className="data-error"><Info size={15}/>{copy(lang,'数据文件加载失败，请刷新页面。','Data files failed to load. Please refresh.','資料檔案載入失敗，請重新整理頁面。')}</div>}
-    <main>
+    <main>{siteData?<>
       {page==='home'&&<Home lang={lang} go={go} onSearch={()=>setSearchOpen(true)} onClass={openClass} data={siteData}/>}
       {page==='classes'&&<ClassesPage lang={lang} classId={classId} setClassId={setClassId} classSkills={siteData.classSkills} skillGraphs={siteData.skillGraphs} focus={skillFocus}/>}
       {page==='mechanics'&&<MechanicsPage lang={lang}/>}
@@ -175,9 +119,9 @@ function App(){
       {page==='gambling'&&<GamblingPage lang={lang}/>}
       {page==='spells'&&<SpellsPage lang={lang} spells={siteData.spellBooks}/>}
       {page==='phases'&&<PhasesPage lang={lang} phaseBeasts={siteData.phaseBeasts}/>}
-    </main>
+    </>:!dataError&&<Loading lang={lang}/>}</main>
     <Footer lang={lang} go={go}/>
-    {searchOpen&&<SearchOverlay lang={lang} query={query} setQuery={setQuery} onClose={()=>setSearchOpen(false)} go={go} onClass={openClass} onSkill={openSkill} onItem={openItemSearch} data={siteData}/>}
+    {searchOpen&&siteData&&<SearchOverlay lang={lang} query={query} setQuery={setQuery} onClose={()=>setSearchOpen(false)} go={go} onClass={openClass} onSkill={openSkill} onItem={openItemSearch} data={siteData}/>}
   </div>
 }
 
@@ -195,16 +139,16 @@ function Header({lang,setLang,page,go,mobileOpen,setMobileOpen,onSearch}:{lang:L
 }
 
 function Home({lang,go,onSearch,onClass,data}:{lang:Lang;go:(page:Page)=>void;onSearch:()=>void;onClass:(id:string)=>void;data:SiteData}){
-  const counts=data.meta?.counts
+  const counts=data.meta.counts
   const links=[
-    {page:'classes' as Page,icon:<Swords/>,title:tr(lang,'navClasses'),text:copy(lang,'4 个职业、12 棵技能树和 1,800 条等级数据','4 classes, 12 skill trees and 1,800 rank records','4 個職業、12 個技能樹與 1,800 筆等級資料'),count:counts?.classSkills||120},
-    {page:'items' as Page,icon:<Hammer/>,title:tr(lang,'navItems'),text:copy(lang,'按名称、类型、稀有度和等级筛选','Filter by name, type, rarity and level','依名稱、類型、稀有度與等級篩選'),count:counts?.equipment||5483},
-    {page:'spells' as Page,icon:<BookOpen/>,title:tr(lang,'navSpells'),text:copy(lang,'查看技能书等级、需求和说明','Browse spell-book tiers, requirements and descriptions','查看技能書等級、需求和說明'),count:counts?.spellBooks||194},
+    {page:'classes' as Page,icon:<Swords/>,title:tr(lang,'navClasses'),text:copy(lang,'4 个职业、12 棵技能树和 1,800 条等级数据','4 classes, 12 skill trees and 1,800 rank records','4 個職業、12 個技能樹與 1,800 筆等級資料'),count:counts.classSkills},
+    {page:'items' as Page,icon:<Hammer/>,title:tr(lang,'navItems'),text:copy(lang,'按名称、类型、稀有度和等级筛选','Filter by name, type, rarity and level','依名稱、類型、稀有度與等級篩選'),count:counts.equipment},
+    {page:'spells' as Page,icon:<BookOpen/>,title:tr(lang,'navSpells'),text:copy(lang,'查看技能书等级、需求和说明','Browse spell-book tiers, requirements and descriptions','查看技能書等級、需求和說明'),count:counts.spellBooks},
     {page:'mechanics' as Page,icon:<SlidersHorizontal/>,title:tr(lang,'navMechanics'),text:copy(lang,'属性公式与伤害触发规则','Attribute formulas and damage triggers','屬性公式與傷害觸發規則'),count:4},
   ]
   return <>
     <section className="home-hero"><div className="content home-hero-inner"><div><p className="kicker">TORCHLIGHT II</p><h1>TL2 Wiki</h1><p className="home-lead">{copy(lang,'查职业技能、装备属性、技能书和相位兽挑战。','Look up class skills, equipment, spell books and Phase Beast challenges.','查詢職業技能、裝備屬性、技能書與相位獸挑戰。')}</p><button className="home-search" onClick={onSearch}><Search size={20}/><span>{tr(lang,'search')}</span><kbd>Ctrl K</kbd></button></div>
-      <div className="home-summary"><span>{copy(lang,'内容总览','At a glance','內容一覽')}</span><b>{(counts?.equipment||5483).toLocaleString()} {copy(lang,'件装备','items','件裝備')}</b><p>{counts?.classSkills||120} {copy(lang,'个职业技能','class skills','個職業技能')} · {(counts?.spellBooks||194).toLocaleString()} {copy(lang,'种技能书','spell books','種技能書')} · {counts?.phaseChallenges||15} {copy(lang,'项相位兽挑战','Phase Beast challenges','項相位獸挑戰')}</p></div>
+      <div className="home-summary"><span>{copy(lang,'内容总览','At a glance','內容一覽')}</span><b>{counts.equipment.toLocaleString()} {copy(lang,'件装备','items','件裝備')}</b><p>{counts.classSkills} {copy(lang,'个职业技能','class skills','個職業技能')} · {counts.spellBooks.toLocaleString()} {copy(lang,'种技能书','spell books','種技能書')} · {counts.phaseChallenges} {copy(lang,'项相位兽挑战','Phase Beast challenges','項相位獸挑戰')}</p></div>
     </div></section>
     <section className="content home-content"><div className="quick-grid">{links.map(link=><button key={link.page} onClick={()=>go(link.page)}><span className="quick-icon">{link.icon}</span><span><b>{link.title}</b><small>{link.text}</small></span><span className="quick-meta"><strong>{link.count.toLocaleString()}</strong><ArrowRight size={16}/></span></button>)}</div>
       <div className="home-columns"><section><SectionTitle eyebrow={copy(lang,'职业','Classes','職業')} title={copy(lang,'选择职业','Choose a class','選擇職業')}/><div className="class-list">{classes.map(hero=><button key={hero.id} onClick={()=>onClass(hero.id)}><span className="class-code" style={{color:hero.accent}}>{hero.monogram}</span><span><b>{pick(hero.name,lang)}</b>{originalName(hero.name,lang)&&<small>{hero.name.en}</small>}</span><ArrowRight size={15}/></button>)}</div></section>
@@ -365,7 +309,6 @@ const classRequirementName=(requirement:string,lang:Lang)=>{
   const id=aliases[requirement.toLowerCase()]||requirement.toLowerCase()
   return pick(classes.find(hero=>hero.id===id)?.name||text(requirement,requirement,requirement),lang)
 }
-const ngLabel=(tier:number)=>tier===1?'NG+':tier>1?`NG+${tier}`:null
 function NgBadge({tier}:{tier:number}){const label=ngLabel(tier);return label?<span className="ng-badge">{label}</span>:null}
 
 function ItemsPage({lang,items,searchRequest,onGamble}:{lang:Lang;items:DbEquipment[];searchRequest:ItemSearchRequest|null;onGamble:(item:DbEquipment)=>void}){

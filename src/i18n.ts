@@ -2,6 +2,7 @@ import type { Lang, LocalText } from './types'
 
 export const pick = (value: LocalText, lang: Lang) => lang === 'zh-CN' ? value.zhCN : lang === 'zh-TW' ? value.zhTW : value.en
 export const isChinese = (lang: Lang) => lang !== 'en'
+export const copy = (lang: Lang, zhCN: string, en: string, zhTW = zhCN) => lang === 'en' ? en : lang === 'zh-TW' ? zhTW : zhCN
 
 export const localeOptions: { code: Lang; label: string; htmlLang: string }[] = [
   { code: 'zh-CN', label: '简体中文', htmlLang: 'zh-CN' },

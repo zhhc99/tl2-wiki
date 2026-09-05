@@ -15,6 +15,8 @@ const unique=(rows)=>new Set(rows.map(row=>row.id)).size===rows.length
 const localeComplete=(value)=>Boolean(value?.en&&value?.zhCN&&value?.zhTW)
 const publicPath=(path)=>resolve(projectDir,'public',path)
 
+assert(meta.schemaVersion===7,'Published data uses an unsupported source schema version')
+assert(/^[a-f0-9]{64}$/.test(meta.sourceFingerprint),'Published data is missing its source fingerprint')
 assert(equipment.length===4029&&equipment.length===meta.counts.equipment,'Expected 4,029 non-normal player-facing equipment records including value-changing NG variants')
 assert(unique(equipment),'Equipment IDs are not unique')
 assert(equipment.every(row=>localeComplete(row.name)&&row.category&&row.subtype&&row.sourceFile),'Equipment has missing required fields')

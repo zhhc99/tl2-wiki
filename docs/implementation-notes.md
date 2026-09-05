@@ -1,12 +1,12 @@
-# 本轮实现取舍
+# 当前领域规则与实现边界
 
-本文只记录需求未明确规定、实现时需要自行确定的内容。
+本文记录当前有效的领域规则与实现边界。历史变更过程由 Git 保存。
 
 ## 装备与孔数
 
 - 玩家装备列表只保留 `rare`、`unique`、`legendary`，白色 `normal` 记录仍存在于原库，但不进入生成 JSON。
-- 装备需求等级和掉落上下限以 schema version 4 的 `items.required_level`、`drop_min_level`、`drop_max_level` 为第一优先级；旧规范化补充只作为缺值回退。
-- 装备效果改用 schema version 5 的 `item_display_effects`，只读取 `is_player_visible=1` 的最终有效词缀。该投影已处理继承覆盖、物品等级曲线、触发技能名与三语占位符；旧英文补充不再参与装备效果显示。
+- 装备需求等级和掉落上下限使用 schema version 7 的 `items.required_level`、`drop_min_level`、`drop_max_level` 最终投影。
+- 装备效果使用 schema version 7 的 `item_display_effects`，只读取 `is_player_visible=1` 的最终有效词缀。该投影已处理继承覆盖、物品等级曲线、触发技能名与三语占位符。
 - 数据核对后把“蓝色装备最多 4 孔”收窄为“蓝色稀有武器最多 4 孔，盾牌除外”。附魔绿色武器最多 3 孔；The Asphyx 两件特殊装备、Netherrealm 武器和盾牌单列说明。
 - 机制页将孔数规则保留在一个段落内，并在一般初始孔数、打孔上限、特殊装备三个加粗小节前断行；角色与装备专名优先采用数据库官方译名。
 - `speed` 只对武器显示，并按游戏面板命名为“攻击速度”；数值仍以秒显示。孔数从装备列表和详情完全移除。

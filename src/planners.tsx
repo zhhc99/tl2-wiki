@@ -1,30 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, CircleAlert, CircleDollarSign, ClipboardCopy, ClipboardPaste, Eye, Gem, RefreshCw, RotateCcw, Search, Shield, Swords, X } from 'lucide-react'
 import { classes } from './data'
-import { pick } from './i18n'
+import { allText, asset, ngLabel, type DbEquipment as PlannerEquipment, type RawEffect as PlannerEffect } from './domain'
+import { copy, pick } from './i18n'
 import { NumberInput } from './NumberInput'
 import { SelectControl } from './SelectControl'
 import type { Lang, LocalText, StatKey } from './types'
 
 type Stat = Exclude<StatKey, 'none'>
-type Rarity = 'normal' | 'rare' | 'unique' | 'legendary'
-interface PlannerEffect {
-  type:string; activation:string; damageType:string; min:number|null; max:number|null; text?:LocalText|null
-  socketTargets?:('weapon'|'armor')[]
-}
-export interface PlannerEquipment {
-  id:string; name:LocalText; iconPath:string|null; rarity:Rarity; set:LocalText|null; setInternalName:string|null
-  level:number; requiredLevel:number; requirements:{stat:Stat;value:number}[]; classRequirement:string|null
-  category:string; subtype:string; blockChance:number|null; sockets:number; speed:number|null; damagePerSecond:[number,number]|null
-  damage:Record<string,[number,number]>; armor:Record<string,[number,number]>
-  effects:PlannerEffect[]; rawSetBonuses:(PlannerEffect&{pieces:number})[]
-  ngTier:number; ngVariantOf:string|null
-}
-
-const copy=(lang:Lang,zhCN:string,en:string,zhTW=zhCN)=>lang==='en'?en:lang==='zh-TW'?zhTW:zhCN
-const asset=(path:string|null)=>path?`${import.meta.env.BASE_URL}${path}`:''
-const allText=(value:LocalText)=>`${value.en} ${value.zhCN} ${value.zhTW}`
-const ngLabel=(tier:number)=>tier===1?'NG+':tier>1?`NG+${tier}`:null
 const NgBadge=({tier}:{tier:number})=>ngLabel(tier)?<span className="ng-badge">{ngLabel(tier)}</span>:null
 const classBases:Record<string,Record<Stat,number>>={
   berserker:{str:15,dex:15,foc:5,vit:5}, outlander:{str:10,dex:15,foc:10,vit:5},

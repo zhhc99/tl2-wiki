@@ -1,0 +1,7 @@
+public/data/*.json
+public/game-icons/
+scripts/item-enrichment.json
+package-lock.json
+/tl2-wiki-data/
+/agent/
+

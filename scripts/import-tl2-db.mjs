@@ -12,6 +12,15 @@ if (!existsSync(dbPath)) throw new Error(`Missing TL2 data database: ${dbPath}`)
 
 const sqlite = new DatabaseSync(dbPath, { readOnly: true })
 const query = (sql, ...params) => sqlite.prepare(sql).all(...params)
+const metadata = new Map(query('SELECT key, value FROM metadata').map((row) => [row.key, row.value]))
+const requiredMetadata = (key) => {
+  const value = metadata.get(key)
+  if (!value) throw new Error(`Missing required database metadata: ${key}`)
+  return value
+}
+const schemaVersion = requiredMetadata('schema_version')
+if (schemaVersion !== '7') throw new Error(`Unsupported database schema version: expected 7, received ${schemaVersion}`)
+const sourceFingerprint = requiredMetadata('selected_media_fingerprint_sha256')
 const clean = (value = '') => String(value ?? '')
   .replace(/\|c[0-9a-f]{8}/gi, '')
   .replace(/\|u/gi, '')
@@ -865,7 +874,8 @@ write('phase-beasts.json', phaseBeasts)
 
 const selectedSkills = classSkills.flatMap((group) => group.trees.flatMap((tree) => tree.skills))
 const meta = {
-  generatedAt: new Date().toISOString(),
+  schemaVersion: Number(schemaVersion),
+  sourceFingerprint,
   sourceDatabase: 'tl2-wiki-data/database/tl2.sqlite',
   languages: ['en', 'zh-CN', 'zh-TW'],
   counts: {
