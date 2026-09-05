@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 const projectDir = resolve(import.meta.dirname, '..')
-const dataRoot = resolve(process.argv[2] || `${projectDir}/tl2-wiki-data`)
+const dataRoot = resolve(process.argv[2] || `${projectDir}/database`)
 const dbPath = resolve(dataRoot, 'database/tl2.sqlite')
 const outputDir = resolve(projectDir, 'public/data')
 const iconOutputDir = resolve(projectDir, 'public/game-icons')
@@ -876,7 +876,7 @@ const selectedSkills = classSkills.flatMap((group) => group.trees.flatMap((tree)
 const meta = {
   schemaVersion: Number(schemaVersion),
   sourceFingerprint,
-  sourceDatabase: 'tl2-wiki-data/database/tl2.sqlite',
+  sourceDatabase: 'database/database/tl2.sqlite',
   languages: ['en', 'zh-CN', 'zh-TW'],
   counts: {
     equipment: equipment.length,

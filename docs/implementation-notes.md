@@ -66,6 +66,6 @@
 
 ## 数据与部署边界
 
-- `tl2-wiki-data/` 整体保留为本地刷新源并继续 ignore；浏览器和 GitHub Pages 只使用已提交的 `public/data`、`public/game-icons` 与静态图片。
+- `database/` 符号链接作为本地刷新源并继续 ignore；浏览器和 GitHub Pages 只使用已提交的 `public/data`、`public/game-icons` 与静态图片。
 - `npm run data:refresh` 需要本地 SQLite 和原始图片；`npm run build`、GitHub Actions 和已发布站点均不需要任何外部数据库。
 - 不把约 157 MB 的 SQLite 放入 Git 历史；这样 Git 跟踪内容保持约 23 MB，Pages 工作流可直接发布 `dist/`。

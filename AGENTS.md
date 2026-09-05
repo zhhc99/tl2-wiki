@@ -11,24 +11,25 @@
 - `scripts/validate-data.mjs`: published-data contract checks.
 - `scripts/smoke-browser.mjs`: critical browser journeys.
 - `public/data/` and `public/game-icons/`: committed generated assets.
-- `tl2-wiki-data/`: ignored local upstream database project.
+- `database/`: ignored symlink to the local upstream database directory.
 - `docs/implementation-notes.md`: current domain rules and implementation invariants.
 
 ## Generated data boundaries
 
 - Never edit `public/data/*.json` or `public/game-icons/` by hand.
 - Do not use `cat`, unrestricted `rg`, or ordinary text diffs on generated JSON.
-- Query `tl2-wiki-data/database/tl2.sqlite` with narrow SQL selecting only the
+- Query `database/database/tl2.sqlite` with narrow SQL selecting only the
   required rows and columns.
 - For a specific generated record, use a bounded `jq` selector or explicit
   `rg --no-ignore` query.
 - Review data refreshes with `git diff --stat`, validators, and concise record
   summaries. Generated JSON intentionally has normal text diffs disabled.
-- Do not traverse `tl2-wiki-data/` or `agent/` unless the task specifically
+- Do not traverse `database/` or `agent/` unless the task specifically
   concerns upstream data or local handoff state.
 
 ## Workflows
 
+- Do not modify `README.md`.
 - UI, styling, copy, and navigation tasks must not run `npm run data:refresh`.
 - For UI work, run `npm run check`; run the browser smoke test when a critical
   user journey changed.
@@ -51,4 +52,3 @@
 - Split code by feature boundary when a hand-written file approaches 20–30 KB;
   avoid one-function modules and framework-heavy abstractions.
 - Keep generated output compact and deterministic.
-

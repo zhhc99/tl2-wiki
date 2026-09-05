@@ -429,6 +429,8 @@ export const gambleTypeForEquipment=(category:string,subtype:string):GambleType|
   if(category==='weapon')return 'weapon'
   return gambleTypeBySubtype[subtype]||null
 }
+export const canGambleEquipment=(item:Pick<PlannerEquipment,'category'|'subtype'|'rarity'|'level'>)=>
+  gambleTypeForEquipment(item.category,item.subtype)!==null&&(item.rarity!=='legendary'||item.level===105)
 const gamblingPresetFromHash=()=>{
   const [page,requestedType,requestedLevel,requestedSockets]=window.location.hash.replace('#/','').split('/')
   const type:GambleType=page==='gambling'&&gambleTypes.some(row=>row[0]===requestedType)?requestedType as GambleType:'weapon'
