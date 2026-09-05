@@ -485,6 +485,7 @@ const buildEquipment = (row, ngTier = 0, ngVariantOf = null) => {
     subtype: clean(row.subtype),
     unitType: clean(row.unit_type),
     rarity: rarityFor(row),
+    rarityValue: row.rarity == null ? null : number(row.rarity),
     level: targetLevel,
     requiredLevel,
     requirements,

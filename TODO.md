@@ -194,3 +194,14 @@ UI, 交互与细节修改:
 - 以下 spell 在游戏内无法获得, 仅存在数据. 将从数据库中提取的 spell 数据添加标签, 然后前端通过识别该标签来过滤 (直接不显示这些 spell).
   - identify spell; waypoint portal spell; poison cloud; summon blood skeleton; summon aloe gel; summon flaming sword; critical strikes;
   - 确认以下技能是否可获取: wirling flames, tunnelers, web, summon blood zombie, bee swarm. 将那些确认无法在游戏内掉落 (不含控制台) 的也打上上述标签.
+
+## 修改基于 f9d8a7f
+
+问题修复:
+
+- 使用顶部全局来查找时, 右侧的文本 (如 "ITEM") 未使用多语言. 当搜索到装备时, 点击搜索结果也不会执行对该装备的搜索, 而只是导航到搜索页面.
+- 在装备库的其他数值添加 2 个元数据, 位于 "掉落等级" 的下方:
+  - SOCKETS
+  - RARITY
+- 所有数字输入框都不便于使用: 假如默认值是 50, 用户想输入 22, 于是全选 - 删除, 然后数值变成了 1, 用户体验归零. 寻找现代化, 交互友好, 逻辑简单的实现.
+- 职业技能的蓝耗在前端和角色等级也相关, 在游戏内则只和技能等级相关. 确认是否存在逻辑问题, 如果存在则修复.

@@ -6,6 +6,7 @@ import {
 import { classes, statInfo } from './data'
 import { isChinese, localeOptions, pick, tr, type UIKey } from './i18n'
 import { BuildsPage, GamblingPage, gambleTypeForEquipment } from './planners'
+import { NumberInput } from './NumberInput'
 import { SelectControl } from './SelectControl'
 import type { ItemCategory, Lang, LocalText, StatKey } from './types'
 
@@ -39,7 +40,7 @@ interface RawEffect {
 interface DbRawSetBonus extends RawEffect { pieces: number }
 interface DbEquipment {
   id: string; slug: string; name: LocalText; internalName: string; category: ItemCategory; subtype: string
-  unitType: string; rarity: Rarity; level: number; requiredLevel: number
+  unitType: string; rarity: Rarity; rarityValue: number | null; level: number; requiredLevel: number
   requirements: { stat: Exclude<StatKey, 'none'>; value: number }[]; sockets: number; speed: number | null
   damagePerSecond: [number,number] | null
   set: LocalText | null; description: LocalText | null; iconPath: string | null
@@ -71,6 +72,7 @@ interface DbMeta {
 type SkillGraphs = Record<string, [number, number][]>
 interface SiteData { equipment:DbEquipment[]; spellBooks:DbSpellBook[]; classSkills:DbClassGroup[]; skillGraphs:SkillGraphs; phaseBeasts:DbPhaseBeast[]; meta:DbMeta|null }
 interface SkillFocus { classId:string; skillId:string }
+interface ItemSearchRequest { query:string; key:number }
 
 const emptyData:SiteData={equipment:[],spellBooks:[],classSkills:[],skillGraphs:{},phaseBeasts:[],meta:null}
 const statLabels:Record<StatKey,string>={str:'STR',dex:'DEX',foc:'FOC',vit:'VIT',none:'—'}
@@ -102,6 +104,7 @@ function App(){
   const [query,setQuery]=useState('')
   const [classId,setClassId]=useState('berserker')
   const [skillFocus,setSkillFocus]=useState<SkillFocus|null>(null)
+  const [itemSearchRequest,setItemSearchRequest]=useState<ItemSearchRequest|null>(null)
   const [siteData,setSiteData]=useState<SiteData>(emptyData)
   const [dataError,setDataError]=useState(false)
 
@@ -158,6 +161,7 @@ function App(){
   }
   const openClass=(id:string)=>{setClassId(id);setSkillFocus(null);go('classes')}
   const openSkill=(focus:SkillFocus)=>{setClassId(focus.classId);setSkillFocus(focus);go('classes')}
+  const openItemSearch=(query:string)=>{setItemSearchRequest(current=>({query,key:(current?.key||0)+1}));go('items')}
 
   return <div className="app-shell">
     <Header lang={lang} setLang={setLang} page={page} go={go} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} onSearch={()=>setSearchOpen(true)}/>
@@ -166,14 +170,14 @@ function App(){
       {page==='home'&&<Home lang={lang} go={go} onSearch={()=>setSearchOpen(true)} onClass={openClass} data={siteData}/>}
       {page==='classes'&&<ClassesPage lang={lang} classId={classId} setClassId={setClassId} classSkills={siteData.classSkills} skillGraphs={siteData.skillGraphs} focus={skillFocus}/>}
       {page==='mechanics'&&<MechanicsPage lang={lang}/>}
-      {page==='items'&&<ItemsPage lang={lang} items={siteData.equipment} onGamble={openGambling}/>}
+      {page==='items'&&<ItemsPage lang={lang} items={siteData.equipment} searchRequest={itemSearchRequest} onGamble={openGambling}/>}
       {page==='builds'&&<BuildsPage lang={lang} items={siteData.equipment}/>}
       {page==='gambling'&&<GamblingPage lang={lang}/>}
       {page==='spells'&&<SpellsPage lang={lang} spells={siteData.spellBooks}/>}
       {page==='phases'&&<PhasesPage lang={lang} phaseBeasts={siteData.phaseBeasts}/>}
     </main>
     <Footer lang={lang} go={go}/>
-    {searchOpen&&<SearchOverlay lang={lang} query={query} setQuery={setQuery} onClose={()=>setSearchOpen(false)} go={go} onClass={openClass} onSkill={openSkill} data={siteData}/>}
+    {searchOpen&&<SearchOverlay lang={lang} query={query} setQuery={setQuery} onClose={()=>setSearchOpen(false)} go={go} onClass={openClass} onSkill={openSkill} onItem={openItemSearch} data={siteData}/>}
   </div>
 }
 
@@ -249,15 +253,16 @@ function SkillPanel({skill,lang,skillGraphs}:{skill:DbClassSkill;lang:Lang;skill
   const [rank,setRank]=useState(1)
   const [characterLevel,setCharacterLevel]=useState(100)
   const selectedRank=skill.ranks.find(item=>item.rank===rank)||skill.ranks[0]
-  const hasLevelScaling=Boolean(selectedRank?.effects.some(effect=>effect.scalingGraph)||selectedRank?.metrics.some(metric=>metric.scalingGraph))
+  const metricUsesCharacterLevel=(metric:DbSkillRank['metrics'][number])=>Boolean(metric.scalingGraph&&metric.kind!=='manaCost'&&metric.kind!=='manaPerSecond')
+  const hasLevelScaling=Boolean(selectedRank?.effects.some(effect=>effect.scalingGraph)||selectedRank?.metrics.some(metricUsesCharacterLevel))
   useEffect(()=>{if(selectedRank)setCharacterLevel(selectedRank.requiredLevel||skill.level)},[selectedRank?.rank,skill.level])
   return <aside className="skill-panel">
     <div className="skill-heading"><img src={asset(skill.iconPath)} alt=""/><div><span className="label">{skill.kind==='active'?tr(lang,'active'):tr(lang,'passive')} · {tr(lang,'unlocks')} {skill.level}</span><h2>{pick(skill.name,lang)}</h2>{originalName(skill.name,lang)&&<small className="original-name">{skill.name.en}</small>}</div></div>
     <p className="skill-description">{pick(skill.description,lang)}</p>
     {skill.requirement&&<div className="skill-requirement"><b>{tr(lang,'requirement')}</b><span>{pick(skill.requirement,lang)}</span></div>}
-    {skill.ranks.length>0&&<section className="rank-section"><div className="rank-controls"><div className="rank-control"><label htmlFor={`rank-${skill.id}`}>{tr(lang,'rank')} <strong>{rank}</strong> / {skill.maxRank}</label><input id={`rank-${skill.id}`} type="range" min="1" max={skill.maxRank} value={rank} onChange={event=>setRank(Number(event.target.value))}/></div>{hasLevelScaling&&<label className="skill-character-level"><span>{tr(lang,'characterLevel')}</span><input type="number" min={selectedRank?.requiredLevel||1} max="100" value={characterLevel} onChange={event=>setCharacterLevel(Math.max(selectedRank?.requiredLevel||1,Math.min(100,Number(event.target.value)||1)))}/></label>}</div>
+    {skill.ranks.length>0&&<section className="rank-section"><div className="rank-controls"><div className="rank-control"><label htmlFor={`rank-${skill.id}`}>{tr(lang,'rank')} <strong>{rank}</strong> / {skill.maxRank}</label><input id={`rank-${skill.id}`} type="range" min="1" max={skill.maxRank} value={rank} onChange={event=>setRank(Number(event.target.value))}/></div>{hasLevelScaling&&<label className="skill-character-level"><span>{tr(lang,'characterLevel')}</span><NumberInput min={selectedRank?.requiredLevel||1} max={100} value={characterLevel} onChange={setCharacterLevel}/></label>}</div>
       <h3>{tr(lang,'skillValues')}</h3>{selectedRank&&(selectedRank.metrics.length||selectedRank.effects.length)?<>
-        {selectedRank.metrics.length>0&&<div className="skill-metrics">{selectedRank.metrics.map((metric,index)=>{const value=metric.scalingGraph?graphValue(skillGraphs[metric.scalingGraph],characterLevel)??metric.value:metric.value;return <div key={`${metric.kind}-${index}`}><span>{tr(lang,metric.kind)}</span><b>{metric.kind==='weaponDamagePct'||metric.kind==='chargeScalePct'?`${value}%`:value}</b></div>})}</div>}
+        {selectedRank.metrics.length>0&&<div className="skill-metrics">{selectedRank.metrics.map((metric,index)=>{const value=metricUsesCharacterLevel(metric)?graphValue(skillGraphs[metric.scalingGraph as string],characterLevel)??metric.value:metric.value;return <div key={`${metric.kind}-${index}`}><span>{tr(lang,metric.kind)}</span><b>{metric.kind==='weaponDamagePct'||metric.kind==='chargeScalePct'?`${value}%`:value}</b></div>})}</div>}
         {selectedRank.effects.length>0&&<ul className="raw-effect-list">{selectedRank.effects.map((effect,index)=><RawEffectLine key={`${effect.type}-${index}`} effect={effect} lang={lang} playerLevel={characterLevel} skillGraphs={skillGraphs}/>)}</ul>}
       </>:<p className="empty-values">{tr(lang,'noRankValues')}</p>}
     </section>}
@@ -363,8 +368,9 @@ const classRequirementName=(requirement:string,lang:Lang)=>{
 const ngLabel=(tier:number)=>tier===1?'NG+':tier>1?`NG+${tier}`:null
 function NgBadge({tier}:{tier:number}){const label=ngLabel(tier);return label?<span className="ng-badge">{label}</span>:null}
 
-function ItemsPage({lang,items,onGamble}:{lang:Lang;items:DbEquipment[];onGamble:(item:DbEquipment)=>void}){
+function ItemsPage({lang,items,searchRequest,onGamble}:{lang:Lang;items:DbEquipment[];searchRequest:ItemSearchRequest|null;onGamble:(item:DbEquipment)=>void}){
   const [category,setCategory]=useState<'all'|ItemCategory>('all');const [rarity,setRarity]=useState<'all'|Rarity>('all');const [query,setQuery]=useState('');const [level,setLevel]=useState('all');const [currentPage,setCurrentPage]=useState(1);const [selected,setSelected]=useState<DbEquipment|null>(null)
+  useEffect(()=>{if(!searchRequest)return;setCategory('all');setRarity('all');setLevel('all');setQuery(searchRequest.query);setSelected(null)},[searchRequest])
   const filtered=useMemo(()=>items.filter(item=>(category==='all'||item.category===category)&&(rarity==='all'||item.rarity===rarity)&&(level==='all'||(level==='100'?item.level>=100:item.level>=Number(level)&&item.level<Number(level)+20))&&(`${allText(item.name)} ${ngLabel(item.ngTier)||''} ${item.subtype} ${item.set?allText(item.set):''} ${item.effects.map(effect=>effect.text?allText(effect.text):'').join(' ')}`).toLowerCase().includes(query.toLowerCase())),[items,category,rarity,level,query])
   useEffect(()=>setCurrentPage(1),[category,rarity,level,query]);const perPage=40;const pages=Math.max(1,Math.ceil(filtered.length/perPage));const rows=filtered.slice((currentPage-1)*perPage,currentPage*perPage)
   const categoryKey=(value:string):UIKey=>value==='weapon'?'weapon':value==='armor'?'armorCat':value==='trinket'?'trinket':value==='pet'?'petGear':value==='socketable'?'socketable':'all'
@@ -385,7 +391,7 @@ function EquipmentDrawer({item,variants,lang,onClose,onGamble}:{item:DbEquipment
     <EquipmentBaseValues item={current} lang={lang}/>
     {current.effects.length>0&&<DetailSection title={copy(lang,'物品效果','Item effects','裝備效果')}><ul className="raw-effect-list">{current.effects.map((effect,index)=><RawEffectLine key={`${effect.type}-${index}`} effect={effect} lang={lang}/>)}</ul></DetailSection>}
     {current.set&&<DetailSection title={copy(lang,'套装','Set','套裝')}><p>{pick(current.set,lang)}</p>{current.rawSetBonuses.length>0&&<ul className="raw-effect-list">{current.rawSetBonuses.map((bonus,index)=><RawEffectLine key={`${bonus.pieces}-${bonus.type}-${index}`} effect={bonus} lang={lang} pieces={bonus.pieces}/>)}</ul>}</DetailSection>}
-    {(current.minimumDropLevel!=null||current.maximumDropLevel!=null||current.blockChance)&&<DetailSection title={copy(lang,'其他数值','Other values','其他數值')}>{(current.minimumDropLevel!=null||current.maximumDropLevel!=null)&&<p>{copy(lang,'掉落等级','Drop level','掉落等級')}: {current.minimumDropLevel!=null&&current.maximumDropLevel!=null?`${current.minimumDropLevel}–${current.maximumDropLevel}`:current.minimumDropLevel!=null?`${current.minimumDropLevel}+`:`≤ ${current.maximumDropLevel}`}</p>}{Boolean(current.blockChance)&&<p>{copy(lang,'格挡几率','Block chance','格擋機率')}: {current.blockChance}%</p>}</DetailSection>}
+    <DetailSection title={copy(lang,'其他数值','Other values','其他數值')}>{(current.minimumDropLevel!=null||current.maximumDropLevel!=null)&&<p>{copy(lang,'掉落等级','Drop level','掉落等級')}: {current.minimumDropLevel!=null&&current.maximumDropLevel!=null?`${current.minimumDropLevel}–${current.maximumDropLevel}`:current.minimumDropLevel!=null?`${current.minimumDropLevel}+`:`≤ ${current.maximumDropLevel}`}</p>}<p>SOCKETS: {current.sockets}</p>{current.rarityValue!=null&&<p>RARITY: {current.rarityValue}</p>}{Boolean(current.blockChance)&&<p>{copy(lang,'格挡几率','Block chance','格擋機率')}: {current.blockChance}%</p>}</DetailSection>
   </aside></div>
 }
 function DetailSection({title,children}:{title:string;children:React.ReactNode}){return <section className="detail-section"><h3>{title}</h3>{children}</section>}
@@ -449,21 +455,22 @@ function PhasesPage({lang,phaseBeasts}:{lang:Lang;phaseBeasts:DbPhaseBeast[]}){
   </div></>
 }
 
-type SearchResult={type:'class'|'skill'|'item'|'spell'|'phase';name:string;sub:string;page:Page;classId?:string;skillId?:string;image?:string|null}
-function SearchOverlay({lang,query,setQuery,onClose,go,onClass,onSkill,data}:{lang:Lang;query:string;setQuery:(query:string)=>void;onClose:()=>void;go:(page:Page)=>void;onClass:(id:string)=>void;onSkill:(focus:SkillFocus)=>void;data:SiteData}){
+type SearchResult={type:'class'|'skill'|'item'|'spell'|'phase';name:string;sub:string;page:Page;classId?:string;skillId?:string;itemQuery?:string;image?:string|null}
+function SearchOverlay({lang,query,setQuery,onClose,go,onClass,onSkill,onItem,data}:{lang:Lang;query:string;setQuery:(query:string)=>void;onClose:()=>void;go:(page:Page)=>void;onClass:(id:string)=>void;onSkill:(focus:SkillFocus)=>void;onItem:(query:string)=>void;data:SiteData}){
   const ref=useRef<HTMLInputElement>(null)
   useEffect(()=>{ref.current?.focus();const handler=(event:KeyboardEvent)=>{if(event.key==='Escape')onClose()};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler)},[onClose])
   const results=useMemo(()=>{const needle=query.trim().toLowerCase();if(!needle)return[];const out:SearchResult[]=[]
     classes.forEach(hero=>{if(`${allText(hero.name)} ${allText(hero.description)}`.toLowerCase().includes(needle))out.push({type:'class',name:pick(hero.name,lang),sub:hero.name.en,page:'classes',classId:hero.id})})
     data.classSkills.forEach(group=>group.trees.forEach(tree=>tree.skills.forEach(skill=>{if(`${allText(skill.name)} ${allText(skill.description)}`.toLowerCase().includes(needle))out.push({type:'skill',name:pick(skill.name,lang),sub:`${pick(classes.find(hero=>hero.id===group.classId)?.name||skill.name,lang)} · ${skill.kind==='active'?tr(lang,'active'):tr(lang,'passive')}`,page:'classes',classId:group.classId,skillId:skill.id,image:skill.iconPath})})))
-    data.equipment.forEach(item=>{if(`${allText(item.name)} ${ngLabel(item.ngTier)||''} ${item.subtype} ${item.set?allText(item.set):''} ${item.effects.map(effect=>effect.text?allText(effect.text):'').join(' ')}`.toLowerCase().includes(needle))out.push({type:'item',name:`${pick(item.name,lang)}${ngLabel(item.ngTier)?` (${ngLabel(item.ngTier)})`:''}`,sub:`${subtypeName(item.subtype,lang)} · Lv ${item.level}`,page:'items',image:item.iconPath})})
+    data.equipment.forEach(item=>{if(`${allText(item.name)} ${ngLabel(item.ngTier)||''} ${item.subtype} ${item.set?allText(item.set):''} ${item.effects.map(effect=>effect.text?allText(effect.text):'').join(' ')}`.toLowerCase().includes(needle)){const variant=ngLabel(item.ngTier);out.push({type:'item',name:`${pick(item.name,lang)}${variant?` (${variant})`:''}`,sub:`${subtypeName(item.subtype,lang)} · Lv ${item.level}`,page:'items',itemQuery:`${pick(item.name,lang)}${variant?` ${variant}`:''}`,image:item.iconPath})}})
     data.spellBooks.forEach(spell=>{if(`${allText(spell.name)} ${allText(spell.family)} ${allText(spell.description)}`.toLowerCase().includes(needle))out.push({type:'spell',name:pick(spell.name,lang),sub:pick(spell.family,lang),page:'spells',image:spell.iconPath})})
     data.phaseBeasts.forEach(beast=>{const challengeText=beast.challenges.map(challenge=>allText(challenge.name)).join(' ');if(`${allText(beast.region)} ${challengeText}`.toLowerCase().includes(needle))out.push({type:'phase',name:pick(beast.region,lang),sub:copy(lang,`${beast.challenges.length} 种挑战`,`${beast.challenges.length} challenges`,`${beast.challenges.length} 種挑戰`),page:'phases'})})
     return out.slice(0,30)
   },[query,lang,data])
   const icons={class:<Swords/>,skill:<Zap/>,item:<Shield/>,spell:<BookOpen/>,phase:<Compass/>}
-  const select=(result:SearchResult)=>{if(result.type==='skill'&&result.classId&&result.skillId)onSkill({classId:result.classId,skillId:result.skillId});else if(result.classId)onClass(result.classId);else go(result.page)}
-  return <div className="search-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}><div className="search-modal"><div className="search-input"><Search size={20}/><input ref={ref} value={query} onChange={event=>setQuery(event.target.value)} placeholder={tr(lang,'search')}/><button onClick={onClose} aria-label={tr(lang,'close')}><X/></button></div><div className="search-list">{!query?<p>{copy(lang,'输入名称、类型、套装或机制关键词。','Enter a name, type, set or mechanics keyword.','輸入名稱、類型、套裝或機制關鍵字。')}</p>:!results.length?<p>{tr(lang,'noResults')}</p>:results.map((result,index)=><button key={`${result.type}-${index}`} onClick={()=>select(result)}><span>{result.image?<img src={asset(result.image)} alt=""/>:icons[result.type]}</span><div><b>{result.name}</b><small>{result.sub}</small></div><em>{result.type}</em><ArrowRight size={14}/></button>)}</div><footer><span>Esc {tr(lang,'close')}</span><span>{results.length} / 30</span></footer></div></div>
+  const typeLabels:Record<SearchResult['type'],string>={class:copy(lang,'职业','Class','職業'),skill:copy(lang,'技能','Skill','技能'),item:copy(lang,'装备','Item','裝備'),spell:copy(lang,'技能书','Spell book','技能書'),phase:copy(lang,'相位兽','Phase Beast','相位獸')}
+  const select=(result:SearchResult)=>{if(result.type==='skill'&&result.classId&&result.skillId)onSkill({classId:result.classId,skillId:result.skillId});else if(result.type==='item'&&result.itemQuery)onItem(result.itemQuery);else if(result.classId)onClass(result.classId);else go(result.page)}
+  return <div className="search-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}><div className="search-modal"><div className="search-input"><Search size={20}/><input ref={ref} value={query} onChange={event=>setQuery(event.target.value)} placeholder={tr(lang,'search')}/><button onClick={onClose} aria-label={tr(lang,'close')}><X/></button></div><div className="search-list">{!query?<p>{copy(lang,'输入名称、类型、套装或机制关键词。','Enter a name, type, set or mechanics keyword.','輸入名稱、類型、套裝或機制關鍵字。')}</p>:!results.length?<p>{tr(lang,'noResults')}</p>:results.map((result,index)=><button key={`${result.type}-${index}`} onClick={()=>select(result)}><span>{result.image?<img src={asset(result.image)} alt=""/>:icons[result.type]}</span><div><b>{result.name}</b><small>{result.sub}</small></div><em>{typeLabels[result.type]}</em><ArrowRight size={14}/></button>)}</div><footer><span>Esc {tr(lang,'close')}</span><span>{results.length} / 30</span></footer></div></div>
 }
 
 function Footer({lang,go}:{lang:Lang;go:(page:Page)=>void}){return <footer className="site-footer"><div className="content"><b>TL2 Wiki</b><nav><button onClick={()=>go('classes')}>{tr(lang,'navClasses')}</button><button onClick={()=>go('items')}>{tr(lang,'navItems')}</button><button onClick={()=>go('builds')}>{tr(lang,'navBuilds')}</button><button onClick={()=>go('gambling')}>{tr(lang,'navGambling')}</button><button onClick={()=>go('spells')}>{tr(lang,'navSpells')}</button><button onClick={()=>go('mechanics')}>{tr(lang,'navMechanics')}</button><button onClick={()=>go('phases')}>{tr(lang,'navPhases')}</button></nav></div></footer>}
