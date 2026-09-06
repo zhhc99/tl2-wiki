@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, CircleAlert, CircleDollarSign, ClipboardCopy, ClipboardPaste, Eye, Gem, RefreshCw, RotateCcw, Search, Shield, Swords, X } from 'lucide-react'
+import { ChevronDown, CircleAlert, ClipboardCopy, ClipboardPaste, Eye, Gem, RefreshCw, RotateCcw, Search, Shield, X } from 'lucide-react'
 import { classes } from './data'
 import { allText, asset, ngLabel, type DbEquipment as PlannerEquipment, type RawEffect as PlannerEffect } from './domain'
 import { copy, pick } from './i18n'
@@ -413,40 +413,4 @@ export function BuildsPage({lang,items}:{lang:Lang;items:PlannerEquipment[]}){
     {transfer&&<div className="build-transfer-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setTransfer(null)}}><section className="build-transfer-dialog" role="dialog" aria-modal="true" aria-labelledby="build-transfer-title"><header><div><span>{copy(lang,'配装文字','Build text','配裝文字')}</span><h2 id="build-transfer-title">{transfer.mode==='import'?copy(lang,'导入配装','Import build','匯入配裝'):copy(lang,'手动复制','Copy manually','手動複製')}</h2></div><button onClick={()=>setTransfer(null)} aria-label={copy(lang,'关闭','Close','關閉')}><X/></button></header><div className="build-transfer-body"><p>{transfer.mode==='import'?copy(lang,'粘贴其他玩家分享的配装文字。','Paste build text shared by another player.','貼上其他玩家分享的配裝文字。'):copy(lang,'复制下方文字即可分享这套配装。','Copy the text below to share this build.','複製下方文字即可分享這套配裝。')}</p><textarea autoFocus spellCheck={false} readOnly={transfer.mode==='export'} value={transfer.text} onFocus={event=>transfer.mode==='export'&&event.currentTarget.select()} onChange={event=>setTransfer({...transfer,text:event.target.value,message:''})} placeholder={transfer.mode==='import'?copy(lang,'在此粘贴配装文字…','Paste build text here…','在此貼上配裝文字…'):undefined}/>{transfer.message&&<p className="transfer-message" role="status"><CircleAlert size={16}/>{transfer.message}</p>}</div><footer>{transfer.mode==='import'&&<button className="paste-build" onClick={pasteBuild}><ClipboardPaste size={16}/>{copy(lang,'从剪贴板粘贴','Paste from clipboard','從剪貼簿貼上')}</button>}<button className="transfer-primary" onClick={transfer.mode==='import'?importBuild:retryCopy}>{transfer.mode==='import'?copy(lang,'导入配装','Import build','匯入配裝'):copy(lang,'再次复制','Copy again','再次複製')}</button></footer></section></div>}
     {notice&&<div className="build-snackbar" role="status" aria-live="polite">{notice}</div>}
   </>
-}
-
-const gambleTypes=[
-  ['weapon',100,'Weapon','武器','武器'],['chest',100,'Chest armor','胸甲','胸甲'],['pants',80,'Pants','腿甲','腿甲'],['boots',80,'Boots','靴子','靴子'],['shoulders',80,'Shoulder armor','肩甲','肩甲'],['shield',75,'Shield','盾牌','盾牌'],['helmet',73,'Helmet','头盔','頭盔'],['gloves',65,'Gloves','手套','手套'],['amulet',60,'Necklace','项链','項鍊'],['ring',60,'Ring','戒指','戒指'],['belt',60,'Belt','腰带','腰帶'],
-] as const
-
-export type GambleType=(typeof gambleTypes)[number][0]
-const gambleTypeBySubtype:Partial<Record<string,GambleType>>={
-  chest_armor:'chest',pants:'pants',boots:'boots',shoulder_armor:'shoulders',shield:'shield',
-  helmet:'helmet',gloves:'gloves',amulet:'amulet',ring:'ring',belt:'belt',
-}
-export const gambleTypeForEquipment=(category:string,subtype:string):GambleType|null=>{
-  if(category==='pet'||category==='socketable')return null
-  if(category==='weapon')return 'weapon'
-  return gambleTypeBySubtype[subtype]||null
-}
-export const canGambleEquipment=(item:Pick<PlannerEquipment,'category'|'subtype'|'rarity'|'level'>)=>
-  gambleTypeForEquipment(item.category,item.subtype)!==null&&(item.rarity!=='legendary'||item.level===105)
-const gamblingPresetFromHash=()=>{
-  const [page,requestedType,requestedLevel,requestedSockets]=window.location.hash.replace('#/','').split('/')
-  const type:GambleType=page==='gambling'&&gambleTypes.some(row=>row[0]===requestedType)?requestedType as GambleType:'weapon'
-  const numericLevel=Number(requestedLevel)
-  const numericSockets=Number(requestedSockets)
-  return {
-    type,
-    level:Number.isFinite(numericLevel)?Math.max(1,Math.min(105,Math.trunc(numericLevel))):50,
-    sockets:Number.isFinite(numericSockets)?Math.max(0,Math.min(5,Math.trunc(numericSockets))):0,
-  }
-}
-
-export function GamblingPage({lang}:{lang:Lang}){
-  const [initial]=useState(gamblingPresetFromHash)
-  const [type,setType]=useState<string>(initial.type);const [level,setLevel]=useState(initial.level);const [sockets,setSockets]=useState(initial.sockets)
-  const selected=gambleTypes.find(row=>row[0]===type)||gambleTypes[0]
-  const rows=[4,5,6,7].map(offset=>{const raw=(level+offset)*selected[1]*(1+sockets/10);return {offset,raw,low:Math.floor(raw),high:Math.ceil(raw)}})
-  return <><section className="page-header"><div className="content"><span>{copy(lang,'商店','Shop','商店')}</span><h1>{copy(lang,'赌博','Gambling','賭博')}</h1><p>{copy(lang,'赌博商人的标价由物品类型、物品等级和孔数决定。输入条件即可查看全部八个整数价格。','Gambler prices depend on item type, item level and sockets. Enter the item details to see all eight integer outcomes.','賭博商人的價格取決於物品類型、物品等級與孔數。輸入條件即可查看八種整數價格。')}</p></div></section><div className="content page-body gamble-page"><div className="gamble-layout"><section className="gamble-controls"><div className="gamble-mark"><CircleDollarSign/><span>{copy(lang,'价格计算器','Price calculator','價格試算')}</span></div><label><span>{copy(lang,'物品类型','Item type','物品類型')}</span><SelectControl className="planner-select" label={copy(lang,'物品类型','Item type','物品類型')} value={type} onChange={setType} options={gambleTypes.map(row=>({value:row[0],label:copy(lang,row[3],row[2],row[4])}))}/></label><label><span>{copy(lang,'物品等级','Item level','物品等級')}</span><NumberInput min={1} max={105} value={level} onChange={setLevel}/></label><label><span>{copy(lang,'孔数','Sockets','孔數')}</span><NumberInput min={0} max={5} value={sockets} onChange={setSockets}/></label><div className="formula"><span>{copy(lang,'计算式','Formula','公式')}</span><code>{copy(lang,`(等级 + 4…7) × ${selected[1]} × (1 + 孔数 ÷ 10)`,`(level + 4…7) × ${selected[1]} × (1 + sockets ÷ 10)`,`(等級 + 4…7) × ${selected[1]} × (1 + 孔數 ÷ 10)`)}</code></div></section><section className="price-results"><header><div><span>{copy(lang,'可能价格','Possible prices','可能價格')}</span><h2>{copy(lang,selected[3],selected[2],selected[4])} · Lv {level}</h2></div><strong>× {selected[1]}</strong></header><div className="price-table"><div className="price-heading"><span>{copy(lang,'价格档','Band','價格組別')}</span><span>{copy(lang,'向下取整','Rounded down','無條件捨去')}</span><span>{copy(lang,'向上取整','Rounded up','無條件進位')}</span></div>{rows.map(row=><div className="price-row" key={row.offset}><span>Lv + {row.offset}<small>{row.raw.toFixed(2)}</small></span><b>{row.low.toLocaleString()}</b><b>{row.high.toLocaleString()}</b></div>)}</div><p>{copy(lang,'共有四个原始价格；游戏可能向下或向上取整，因此列出八个整数结果。两种取整相同时，会看到重复价格。','There are four underlying values. Each may be rounded down or up, producing eight integer outcomes; identical rounding results appear twice.','共有四組原始價格；遊戲可能採用無條件捨去或進位，因此列出八種整數結果。兩者相同時會出現重複價格。')}</p></section></div><section className="gamble-notes"><Swords/><div><h2>{copy(lang,'价格计算方式','Price calculation','價格計算方式')}</h2><p>{copy(lang,'物品类型决定基础系数；每个孔会使价格提高 10%。再将物品等级分别加 4、5、6、7，得到四档价格。','Item type sets the base factor and every socket adds 10%. The gambler then uses item level plus 4, 5, 6 and 7 for the four price bands.','物品類型決定基礎係數，每個孔會讓價格提高 10%。再將物品等級分別加上 4、5、6、7，得到四組價格。')}</p></div><Shield/></section></div></>
 }

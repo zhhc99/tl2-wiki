@@ -6,7 +6,8 @@ import {
 import { classes, statInfo } from './data'
 import { allText, asset, ngLabel, type DbClassGroup, type DbClassSkill, type DbEquipment, type DbMeta, type DbPhaseBeast, type DbSkillRank, type DbSpellBook, type RawEffect, type Rarity, type SiteData, type SkillGraphs } from './domain'
 import { copy, isChinese, localeOptions, pick, tr, type UIKey } from './i18n'
-import { BuildsPage, GamblingPage, canGambleEquipment, gambleTypeForEquipment } from './planners'
+import { GamblingPage, canGambleEquipment, gambleTypeForEquipment } from './gambling'
+import { BuildsPage } from './planners'
 import { NumberInput } from './NumberInput'
 import { SelectControl } from './SelectControl'
 import type { ItemCategory, Lang, LocalText, StatKey } from './types'
@@ -100,7 +101,7 @@ function App(){
     if(!canGambleEquipment(item))return
     const type=gambleTypeForEquipment(item.category,item.subtype)
     if(!type)return
-    window.location.hash=`/gambling/${type}/${item.level}/${item.sockets}`
+    window.location.hash=`/gambling/${type}/${item.level}/${item.sockets}/${encodeURIComponent(item.id)}`
     setPage('gambling');setMobileOpen(false);setSearchOpen(false)
     window.scrollTo({top:0,behavior:'smooth'})
   }
@@ -117,7 +118,7 @@ function App(){
       {page==='mechanics'&&<MechanicsPage lang={lang}/>}
       {page==='items'&&<ItemsPage lang={lang} items={siteData.equipment} searchRequest={itemSearchRequest} onGamble={openGambling}/>}
       {page==='builds'&&<BuildsPage lang={lang} items={siteData.equipment}/>}
-      {page==='gambling'&&<GamblingPage lang={lang}/>}
+      {page==='gambling'&&<GamblingPage lang={lang} items={siteData.equipment}/>}
       {page==='spells'&&<SpellsPage lang={lang} spells={siteData.spellBooks}/>}
       {page==='phases'&&<PhasesPage lang={lang} phaseBeasts={siteData.phaseBeasts}/>}
     </>:!dataError&&<Loading lang={lang}/>}</main>
@@ -336,7 +337,7 @@ function EquipmentDrawer({item,variants,lang,onClose,onGamble}:{item:DbEquipment
     <EquipmentBaseValues item={current} lang={lang}/>
     {current.effects.length>0&&<DetailSection title={copy(lang,'物品效果','Item effects','裝備效果')}><ul className="raw-effect-list">{current.effects.map((effect,index)=><RawEffectLine key={`${effect.type}-${index}`} effect={effect} lang={lang}/>)}</ul></DetailSection>}
     {current.set&&<DetailSection title={copy(lang,'套装','Set','套裝')}><p>{pick(current.set,lang)}</p>{current.rawSetBonuses.length>0&&<ul className="raw-effect-list">{current.rawSetBonuses.map((bonus,index)=><RawEffectLine key={`${bonus.pieces}-${bonus.type}-${index}`} effect={bonus} lang={lang} pieces={bonus.pieces}/>)}</ul>}</DetailSection>}
-    <DetailSection title={copy(lang,'其他数值','Other values','其他數值')}>{(current.minimumDropLevel!=null||current.maximumDropLevel!=null)&&<p>{copy(lang,'掉落等级','Drop level','掉落等級')}: {current.minimumDropLevel!=null&&current.maximumDropLevel!=null?`${current.minimumDropLevel}–${current.maximumDropLevel}`:current.minimumDropLevel!=null?`${current.minimumDropLevel}+`:`≤ ${current.maximumDropLevel}`}</p>}<p>SOCKETS: {current.sockets}</p>{current.rarityValue!=null&&<p>RARITY: {current.rarityValue}</p>}</DetailSection>
+    <DetailSection title={copy(lang,'其他数值','Other values','其他數值')}>{(current.minimumDropLevel!=null||current.maximumDropLevel!=null)&&<p>{copy(lang,'掉落等级','Drop level','掉落等級')}: {current.minimumDropLevel!=null&&current.maximumDropLevel!=null?`${current.minimumDropLevel}–${current.maximumDropLevel}`:current.minimumDropLevel!=null?`${current.minimumDropLevel}+`:`≤ ${current.maximumDropLevel}`}</p>}<p>SOCKETS: {current.sockets}</p>{current.rarityValue!=null&&<p>RARITY: {current.rarityValue}</p>}<p>VALUE: {current.value}</p></DetailSection>
   </aside></div>
 }
 function DetailSection({title,children}:{title:string;children:React.ReactNode}){return <section className="detail-section"><h3>{title}</h3>{children}</section>}

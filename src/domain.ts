@@ -39,6 +39,7 @@ export interface DbEquipment {
   unitType: string
   rarity: Rarity
   rarityValue: number | null
+  value: number
   level: number
   requiredLevel: number
   requirements: { stat: Exclude<StatKey, 'none'>; value: number }[]

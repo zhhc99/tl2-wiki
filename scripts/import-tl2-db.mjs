@@ -58,11 +58,13 @@ const unobtainableSpellBookFamilies = new Set([
 
 const itemRows = query(`
   SELECT i.*, sf.path AS source_path,
+    item_values.value_integer AS item_value,
     sets.display_name_en AS set_display_name_en,
     sets.display_name_zh_cn AS set_display_name_zh_cn,
     sets.display_name_zh_tw AS set_display_name_zh_tw
   FROM items i
   JOIN source_files sf ON sf.id=i.source_file_id
+  JOIN v_item_values item_values ON item_values.item_id=i.id
   LEFT JOIN item_sets sets ON lower(sets.internal_name)=lower(i.set_name)
   ORDER BY i.level DESC, i.display_name_en, i.id
 `).filter((row) => !/^(NO_DROP|MON PROP DON'T USE)$/i.test(clean(row.display_name_en)))
@@ -495,6 +497,7 @@ const buildEquipment = (row, ngTier = 0, ngVariantOf = null) => {
     unitType: clean(row.unit_type),
     rarity: rarityFor(row),
     rarityValue: row.rarity == null ? null : number(row.rarity),
+    value: number(row.item_value),
     level: targetLevel,
     requiredLevel,
     requirements,
