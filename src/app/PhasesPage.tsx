@@ -53,11 +53,11 @@ export function PhasesPage({ lang, phaseBeasts }: { lang: Lang; phaseBeasts: DbP
           </figure>
           <div>
             <SectionTitle
-              eyebrow={copy(lang, '如何进入', 'How it works', '如何進入')}
+              eyebrow={copy(lang, '如何进入', 'How to enter', '如何進入')}
               title={copy(
                 lang,
                 '找到相位兽，开启挑战',
-                'Find the beast and open its challenge',
+                'Find the beast and start the challenge',
                 '找到相位獸，開啟挑戰',
               )}
             />
@@ -74,7 +74,7 @@ export function PhasesPage({ lang, phaseBeasts }: { lang: Lang; phaseBeasts: DbP
         <div className="phase-toolbar">
           <SectionTitle
             eyebrow={copy(lang, '挑战地图', 'Challenge areas', '挑戰地圖')}
-            title={copy(lang, '按幕查看', 'Browse by act', '按章節查看')}
+            title={copy(lang, '按幕查看', 'Browse by act', '按幕查看')}
           />
           <div className="segmented act-tabs">
             {[0, 1, 2, 3].map((value) => (

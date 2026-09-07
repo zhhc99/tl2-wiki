@@ -121,7 +121,7 @@ export function GemPickerDialog({
                 `第 ${selection.index + 1} 孔`,
               )}
             </span>
-            <h2>{copy(lang, '选择宝石', 'Choose gem', '選擇寶石')}</h2>
+            <h2>{copy(lang, '选择镶嵌物', 'Choose socketable', '選擇鑲嵌物')}</h2>
           </div>
           <button onClick={onClose} aria-label={copy(lang, '关闭', 'Close', '關閉')}>
             <X />
@@ -135,9 +135,9 @@ export function GemPickerDialog({
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder={copy(
               lang,
-              '搜索宝石名称或效果…',
-              'Search gem name or effect…',
-              '搜尋寶石名稱或效果…',
+              '搜索镶嵌物名称或效果…',
+              'Search socketable name or effect…',
+              '搜尋鑲嵌物名稱或效果…',
             )}
           />
         </label>
@@ -166,9 +166,9 @@ export function GemPickerDialog({
             <p>
               {copy(
                 lang,
-                '没有适用于该装备的宝石。',
-                'No gems apply to this item.',
-                '沒有適用於此裝備的寶石。',
+                '没有适用于该装备的镶嵌物。',
+                'No socketables can be used with this item.',
+                '沒有適用於此裝備的鑲嵌物。',
               )}
             </p>
           )}
@@ -214,7 +214,7 @@ export function BuildTransferDialog({
       >
         <header>
           <div>
-            <span>{copy(lang, '配装文字', 'Build text', '配裝文字')}</span>
+            <span>{copy(lang, '配装代码', 'Build code', '配裝代碼')}</span>
             <h2 id="build-transfer-title">
               {transfer.mode === 'import'
                 ? copy(lang, '导入配装', 'Import build', '匯入配裝')
@@ -230,15 +230,15 @@ export function BuildTransferDialog({
             {transfer.mode === 'import'
               ? copy(
                   lang,
-                  '粘贴其他玩家分享的配装文字。',
-                  'Paste build text shared by another player.',
-                  '貼上其他玩家分享的配裝文字。',
+                  '粘贴其他玩家分享的配装代码。',
+                  'Paste a build code shared by another player.',
+                  '貼上其他玩家分享的配裝代碼。',
                 )
               : copy(
                   lang,
-                  '复制下方文字即可分享这套配装。',
-                  'Copy the text below to share this build.',
-                  '複製下方文字即可分享這套配裝。',
+                  '复制下方代码即可分享这套配装。',
+                  'Copy the code below to share this build.',
+                  '複製下方代碼即可分享這套配裝。',
                 )}
           </p>
           <textarea
@@ -250,7 +250,7 @@ export function BuildTransferDialog({
             onChange={(event) => onTextChange(event.target.value)}
             placeholder={
               transfer.mode === 'import'
-                ? copy(lang, '在此粘贴配装文字…', 'Paste build text here…', '在此貼上配裝文字…')
+                ? copy(lang, '在此粘贴配装代码…', 'Paste build code here…', '在此貼上配裝代碼…')
                 : undefined
             }
           />

@@ -18,7 +18,7 @@ const effectNames: Record<string, LocalText> = {
   'PERCENT ARMOR BONUS': localText('Armor bonus', '护甲加成', '護甲加成'),
   'ARMOR BONUS': localText('Armor', '护甲', '護甲'),
   'PERCENT CHARGING BONUS': localText('Charge rate', '怒气获得', '怒氣獲得'),
-  'CRITICAL CHANCE': localText('Critical-hit chance', '暴击几率', '爆擊機率'),
+  'CRITICAL CHANCE': localText('Critical hit chance', '暴击几率', '爆擊機率'),
   'DODGE CHANCE BONUS': localText('Dodge chance', '闪避几率', '閃避機率'),
   'SHIELD BUFFER': localText('Damage shield', '伤害护盾', '傷害護盾'),
   'HP RECHARGE PLAYER': localText('Health recovery', '生命恢复', '生命恢復'),
@@ -33,7 +33,7 @@ const damageTypeNames: Record<string, LocalText> = {
   ALL: localText('All', '全部', '全部'),
   PHYSICAL: localText('Physical', '物理', '物理'),
   FIRE: localText('Fire', '火焰', '火焰'),
-  ICE: localText('Ice', '冰霜', '冰霜'),
+  ICE: localText('Ice', '寒冰', '寒冰'),
   ELECTRIC: localText('Electric', '闪电', '閃電'),
   POISON: localText('Poison', '毒素', '毒素'),
 }

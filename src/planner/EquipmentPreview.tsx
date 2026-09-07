@@ -100,7 +100,7 @@ export function EquipmentPreview({
           )}
           {preview.item.speed != null && (
             <div>
-              <span>{copy(lang, '攻击间隔', 'Attack Speed', '攻擊間隔')}</span>
+              <span>{copy(lang, '攻击间隔', 'Attack Interval', '攻擊間隔')}</span>
               <b>{preview.item.speed.toFixed(2)}s</b>
             </div>
           )}
@@ -154,7 +154,7 @@ export function EquipmentPreview({
         )}
         {model.sockets.length > 0 && (
           <section className="gear-preview-sockets">
-            <h3>{copy(lang, '宝石孔位', 'Gem sockets', '寶石孔位')}</h3>
+            <h3>{copy(lang, '插槽', 'Sockets', '插槽')}</h3>
             <div>
               {model.sockets.map((row) => (
                 <article key={row.index}>
@@ -182,7 +182,7 @@ export function EquipmentPreview({
                       <button
                         className="clear-gem"
                         onClick={() => onRemoveGem(preview.slot, row.index)}
-                        aria-label={copy(lang, '移除宝石', 'Remove gem', '移除寶石')}
+                        aria-label={copy(lang, '移除镶嵌物', 'Remove socketable', '移除鑲嵌物')}
                       >
                         <X size={15} />
                       </button>
@@ -192,7 +192,7 @@ export function EquipmentPreview({
                       className="choose-gem"
                       onClick={() => onChooseGem(preview.slot, row.index)}
                     >
-                      {copy(lang, '选择宝石', 'Choose gem', '選擇寶石')}
+                      {copy(lang, '选择镶嵌物', 'Choose socketable', '選擇鑲嵌物')}
                     </button>
                   )}
                 </article>

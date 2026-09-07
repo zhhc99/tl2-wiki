@@ -79,6 +79,17 @@ function App() {
     localStorage.setItem('tl2-locale', lang)
     document.documentElement.lang =
       localeOptions.find((option) => option.code === lang)?.htmlLang || 'en-US'
+    document
+      .querySelector('meta[name="description"]')
+      ?.setAttribute(
+        'content',
+        copy(
+          lang,
+          'TL2 Wiki — Torchlight II 职业、机制、装备、技能书与相位兽资料。',
+          'TL2 Wiki — Torchlight II classes, mechanics, equipment, spell books and Phase Beasts.',
+          'TL2 Wiki — Torchlight II 職業、機制、裝備、技能書與相位獸資料。',
+        ),
+      )
   }, [lang])
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {

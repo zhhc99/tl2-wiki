@@ -252,14 +252,14 @@ export function BuildsPage({
   const exportBuild = async () => {
     let text: string
     try {
-      text = await serializeBuild(currentBuild())
+      text = await serializeBuild(currentBuild(), lang)
     } catch {
       setNotice(
         copy(
           lang,
-          '暂时无法生成配装文字。',
-          'Build text could not be created right now.',
-          '目前無法產生配裝文字。',
+          '暂时无法生成配装代码。',
+          'Build code could not be generated right now.',
+          '目前無法產生配裝代碼。',
         ),
       )
       return
@@ -267,7 +267,7 @@ export function BuildsPage({
     try {
       if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
       await navigator.clipboard.writeText(text)
-      setNotice(copy(lang, '配装文字已复制。', 'Build text copied.', '配裝文字已複製。'))
+      setNotice(copy(lang, '配装代码已复制。', 'Build code copied.', '配裝代碼已複製。'))
     } catch {
       setTransfer({
         mode: 'export',
@@ -320,13 +320,13 @@ export function BuildsPage({
     if ('error' in result) {
       const message =
         result.error === 'empty'
-          ? copy(lang, '请先粘贴配装文字。', 'Paste build text first.', '請先貼上配裝文字。')
+          ? copy(lang, '请先粘贴配装代码。', 'Paste a build code first.', '請先貼上配裝代碼。')
           : result.error === 'version'
             ? copy(
                 lang,
-                '此配装来自不支持的版本。',
+                '此配装版本不受支持。',
                 'This build uses an unsupported version.',
-                '此配裝來自不支援的版本。',
+                '此配裝版本不受支援。',
               )
             : result.error === 'class'
               ? copy(
@@ -337,9 +337,9 @@ export function BuildsPage({
                 )
               : copy(
                   lang,
-                  '无法识别这段配装文字，请确认内容完整。',
-                  'This build text could not be read. Check that it is complete.',
-                  '無法辨識這段配裝文字，請確認內容完整。',
+                  '无法读取这段配装代码，请确认内容完整。',
+                  'This build code could not be read. Check that it is complete.',
+                  '無法讀取這段配裝代碼，請確認內容完整。',
                 )
       setTransfer({ ...transfer, message })
       return
@@ -359,9 +359,9 @@ export function BuildsPage({
       skipped
         ? copy(
             lang,
-            `配装已导入，${skipped} 项无效内容已跳过。`,
+            `配装已导入，已跳过 ${skipped} 个不可用条目。`,
             `Build imported; ${skipped} unavailable entries were skipped.`,
-            `配裝已匯入，已略過 ${skipped} 項無效內容。`,
+            `配裝已匯入，已略過 ${skipped} 個不可用項目。`,
           )
         : copy(lang, '配装已导入。', 'Build imported.', '配裝已匯入。'),
     )
@@ -371,7 +371,7 @@ export function BuildsPage({
     try {
       await navigator.clipboard.writeText(transfer.text)
       setTransfer(null)
-      setNotice(copy(lang, '配装文字已复制。', 'Build text copied.', '配裝文字已複製。'))
+      setNotice(copy(lang, '配装代码已复制。', 'Build code copied.', '配裝代碼已複製。'))
     } catch {
       setTransfer({
         ...transfer,

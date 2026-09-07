@@ -50,7 +50,7 @@ export function MechanicsPage({ lang }: { lang: Lang }) {
         {copy(
           lang,
           '查看四项属性的准确收益，以及不同伤害能否触发暴击、吸取和武器效果。',
-          'See the exact returns from the four attributes and which damage sources can trigger critical hits, stealing and weapon effects.',
+          'See the exact bonuses from the four attributes and which damage sources can trigger critical hits, life/mana steal, and weapon effects.',
           '查看四項屬性的實際收益，以及各類傷害能否觸發爆擊、吸取與武器效果。',
         )}
       </PageHeader>

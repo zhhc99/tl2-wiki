@@ -191,9 +191,9 @@ export function BuildWorkspace({
                       {locked
                         ? copy(
                             lang,
-                            '双手武器占用',
-                            'Occupied by two-hand weapon',
-                            '雙手武器已占用',
+                            '已被双手武器占用',
+                            'Occupied by a two-handed weapon',
+                            '已被雙手武器占用',
                           )
                         : copy(lang, '选择装备', 'Choose item', '選擇裝備')}
                     </button>
@@ -278,7 +278,7 @@ export function BuildWorkspace({
                 <b>+{planner.armorBonus.toFixed(1)}%</b>
               </div>
               <div>
-                <span>{copy(lang, '暴击率', 'Critical-hit chance', '爆擊率')}</span>
+                <span>{copy(lang, '暴击率', 'Critical hit chance', '爆擊率')}</span>
                 <b>{planner.criticalChance.toFixed(1)}%</b>
               </div>
               <div>
@@ -304,7 +304,7 @@ export function BuildWorkspace({
                 </b>
               </div>
               <div>
-                <span>{copy(lang, '专注伤害加成', 'Focus damage bonus', '專注傷害加成')}</span>
+                <span>{copy(lang, '智力伤害加成', 'Focus damage bonus', '智力傷害加成')}</span>
                 <b>+{planner.focusDamageBonus.toFixed(1)}%</b>
               </div>
               <div>
@@ -312,11 +312,11 @@ export function BuildWorkspace({
                 <b>{planner.blockChance == null ? '—' : `${planner.blockChance.toFixed(1)}%`}</b>
               </div>
               <div>
-                <span>{copy(lang, '处决率', 'Execute chance', '處決率')}</span>
+                <span>{copy(lang, '猛击几率', 'Execute chance', '猛擊機率')}</span>
                 <b>{planner.executeChance.toFixed(1)}%</b>
               </div>
               <div>
-                <span>{copy(lang, '全伤害增加', 'All damage bonus', '全傷害增加')}</span>
+                <span>{copy(lang, '全伤害加成', 'All damage bonus', '全傷害加成')}</span>
                 <b>+{planner.allDamage.toFixed(1)}%</b>
               </div>
               <div>
@@ -351,7 +351,7 @@ export function BuildWorkspace({
           <header>
             <div>
               <span>{copy(lang, '镶嵌', 'Sockets', '鑲嵌')}</span>
-              <h2>{copy(lang, '已镶嵌宝石', 'Socketed gems', '已鑲嵌寶石')}</h2>
+              <h2>{copy(lang, '镶嵌物', 'Socketables', '鑲嵌物')}</h2>
             </div>
             <strong>{planner.activeSocketRows.length}</strong>
           </header>

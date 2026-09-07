@@ -55,8 +55,8 @@ export const classDamageReduction: Record<string, number> = {
 export const statNames: Record<Stat, LocalText> = {
   str: { en: 'Strength', zhCN: '力量', zhTW: '力量' },
   dex: { en: 'Dexterity', zhCN: '敏捷', zhTW: '敏捷' },
-  foc: { en: 'Focus', zhCN: '专注', zhTW: '專注' },
-  vit: { en: 'Vitality', zhCN: '体力', zhTW: '體力' },
+  foc: { en: 'Focus', zhCN: '智力', zhTW: '智力' },
+  vit: { en: 'Vitality', zhCN: '体质', zhTW: '體質' },
 }
 
 export const statEffectTypes: Record<string, Stat> = {

@@ -15,7 +15,7 @@ const gambleTypes = [
   { id: 'shield', value: 75, en: 'Shield', zhCN: '盾牌', zhTW: '盾牌' },
   { id: 'helmet', value: 73, en: 'Helmet', zhCN: '头盔', zhTW: '頭盔' },
   { id: 'gloves', value: 65, en: 'Gloves', zhCN: '手套', zhTW: '手套' },
-  { id: 'amulet', value: 60, en: 'Necklace', zhCN: '项链', zhTW: '項鍊' },
+  { id: 'amulet', value: 60, en: 'Amulet', zhCN: '项链', zhTW: '項鍊' },
   { id: 'ring', value: 60, en: 'Ring', zhCN: '戒指', zhTW: '戒指' },
   { id: 'belt', value: 60, en: 'Belt', zhCN: '腰带', zhTW: '腰帶' },
 ] as const
@@ -208,7 +208,7 @@ export function GamblingPage({ lang, items }: { lang: Lang; items: DbEquipment[]
                         {copy(
                           lang,
                           '不选择时使用物品类型的基础值',
-                          'Uses the item-type base value when empty',
+                          'If none is selected, use the item type’s base value',
                           '未選擇時使用物品類型的基礎值',
                         )}
                       </small>
@@ -250,7 +250,7 @@ export function GamblingPage({ lang, items }: { lang: Lang; items: DbEquipment[]
             </header>
             <div className="price-table">
               <div className="price-heading">
-                <span>{copy(lang, '价格档', 'Band', '價格組別')}</span>
+                <span>{copy(lang, '价格档', 'Price band', '價格級距')}</span>
                 <span>{copy(lang, '价格', 'Price', '價格')}</span>
               </div>
               {rows.map((row) => (
@@ -270,7 +270,7 @@ export function GamblingPage({ lang, items }: { lang: Lang; items: DbEquipment[]
               <span>
                 {copy(
                   lang,
-                  '物品类型决定基础系数',
+                  '物品类型决定基础值',
                   'Item type sets the base value',
                   '物品類型決定基礎值',
                 )}
@@ -278,7 +278,7 @@ export function GamblingPage({ lang, items }: { lang: Lang; items: DbEquipment[]
               <Tooltip
                 text={copy(
                   lang,
-                  '部分 RARITY 较低的物品除外。',
+                  '部分 RARITY 较低的物品会使用不同数值。',
                   'Some items with a lower RARITY use a different value.',
                   '部分 RARITY 較低的物品會使用不同數值。',
                 )}

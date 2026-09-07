@@ -13,6 +13,8 @@ import {
   type SocketLoadout,
   type Stat,
 } from './model'
+import { copy } from '../i18n'
+import type { Lang } from '../types'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -76,13 +78,10 @@ export type ImportError = 'empty' | 'format' | 'version' | 'class'
 
 export type ParseBuildResult = { state: BuildState; skipped: number } | { error: ImportError }
 
-export const serializeBuild = async ({
-  classId,
-  level,
-  allocated,
-  loadout,
-  socketLoadout,
-}: BuildState) => {
+export const serializeBuild = async (
+  { classId, level, allocated, loadout, socketLoadout }: BuildState,
+  lang: Lang,
+) => {
   const equipment = Object.fromEntries(
     slots.flatMap((slot) => (loadout[slot] ? [[slot, loadout[slot]]] : [])),
   )
@@ -100,7 +99,12 @@ export const serializeBuild = async ({
     gems,
   })
   const buildCode = `TL2BUILD/1:${bytesToBase64Url(await compressText(json))}`
-  return `Torchlight II Build\n\n在 Build Planner 中导入：\nhttps://zhhc99.github.io/tl2-wiki/#/builds\n\n${buildCode}`
+  return copy(
+    lang,
+    `Torchlight II Build\n\n在 Build Planner 中导入：\nhttps://zhhc99.github.io/tl2-wiki/#/builds\n\n${buildCode}`,
+    `Torchlight II Build\n\nImport into Build Planner:\nhttps://zhhc99.github.io/tl2-wiki/#/builds\n\n${buildCode}`,
+    `Torchlight II Build\n\n在 Build Planner 中匯入：\nhttps://zhhc99.github.io/tl2-wiki/#/builds\n\n${buildCode}`,
+  )
 }
 
 export const parseBuild = async (

@@ -118,7 +118,7 @@ export function ItemsPage({
           />
           <SelectControl
             className="filter-select"
-            label={copy(lang, '装备等级', 'Item level', '裝備等級')}
+            label={copy(lang, '物品等级', 'Item level', '物品等級')}
             value={level}
             onChange={setLevel}
             options={[
