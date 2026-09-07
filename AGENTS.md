@@ -1,54 +1,22 @@
-# TL2 Wiki agent guide
+# tl2-wiki AGENTS.md
 
-## Repository map
+## 数据层级
 
-- `src/App.tsx`: application shell, hash routing, data loading, and catalogue pages.
-- `src/planners.tsx`: build planner and gambling calculator UI/domain rules.
-- `src/data.ts`: small hand-maintained class and mechanics reference data.
-- `src/i18n.ts`: shared UI translations.
-- `src/styles.css`: site-wide and feature styles.
-- `scripts/import-tl2-db.mjs`: SQLite-to-browser export adapter.
-- `scripts/validate-data.mjs`: published-data contract checks.
-- `scripts/smoke-browser.mjs`: critical browser journeys.
-- `public/data/` and `public/game-icons/`: committed generated assets.
-- `database/`: ignored symlink to the local upstream database directory.
-- `docs/implementation-notes.md`: current domain rules and implementation invariants.
+将数据分成 3 个层级:
 
-## Generated data boundaries
+1. tl2 原始数据. 如忠实记录游戏 `.DAT` 的数据库.
+2. 能直接被 wiki 所用的视图. 记录 wiki 关心的数据.
+3. 前端在特定规则下计算, 得到的派生数据.
 
-- Never edit `public/data/*.json` or `public/game-icons/` by hand.
-- Do not use `cat`, unrestricted `rg`, or ordinary text diffs on generated JSON.
-- Query `database/database/tl2.sqlite` with narrow SQL selecting only the
-  required rows and columns.
-- For a specific generated record, use a bounded `jq` selector or explicit
-  `rg --no-ignore` query.
-- Review data refreshes with `git diff --stat`, validators, and concise record
-  summaries. Generated JSON intentionally has normal text diffs disabled.
-- Do not traverse `database/` or `agent/` unless the task specifically
-  concerns upstream data or local handoff state.
+tl2-db 项目将负责 1 和 2, 本项目维护 3. 本项目维护者往往有 tl2-db 项目的只读权限, 如果发现一个数据超出职责, 应该停下来并用短回复汇报.
 
-## Workflows
+## 工作原则
 
-- Do not modify `README.md`.
-- UI, styling, copy, and navigation tasks must not run `npm run data:refresh`.
-- For UI work, run `npm run check`; run the browser smoke test when a critical
-  user journey changed.
-- Only database-contract, importer, or data-rule work should refresh data.
-- For data work, run `npm run data:refresh`, `npm run check`, then inspect a
-  concise diff/stat summary.
-- `npm run build` and deployment use committed browser assets and do not need
-  the local SQLite database.
-- Keep one formula or projection rule at one layer. Prefer the upstream data
-  project for game-data interpretation and keep the web importer mechanical.
+- `public/` 下的文件只允许自动生成. 禁止对这些大 JSON 使用 `cat`, 无限制的 `rg` 和文本 `diff`, 应该做小范围读取.
+- 非数据类任务禁止刷新数据 (`npm run data:refresh`). 刷新数据后禁止查看全量 JSON diff.
+- 代码量最小, 不做防御性逻辑. 不做无意义测试.
+- 用中文文字和英文标点维护文档 (不影响游戏内文本和多语言).
+- 简洁性优先级高于后向兼容性. 无需维护历史包袱. 破坏性更新应当说明.
+- 用 Prettier 维护 JS/TS 代码. 单个代码文件原则上不超过 500 行. 对于超出的文件, **如果代码量集中于并不复用的组件而非业务逻辑, 或拆分导致父组件认知复杂度增加, 或长文件主要是清晰的线性结构, 则无须拆分.**
+- 禁止修改 README.md
 
-## Code expectations
-
-- Preserve user-input and browser-boundary validation (URL, storage,
-  clipboard, imports, numeric drafts, focus, and reduced motion).
-- Fail fast on missing or incompatible versioned internal data; do not silently
-  replace required numbers, objects, or arrays with plausible defaults.
-- Reuse the shared domain types, translations, asset helpers, and search helpers
-  instead of introducing local copies.
-- Split code by feature boundary when a hand-written file approaches 20–30 KB;
-  avoid one-function modules and framework-heavy abstractions.
-- Keep generated output compact and deterministic.

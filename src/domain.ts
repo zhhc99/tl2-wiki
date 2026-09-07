@@ -1,42 +1,41 @@
 import type { ItemCategory, LocalText, StatKey } from './types'
 
-export type Rarity = 'normal' | 'rare' | 'unique' | 'legendary'
+export type Rarity = 'rare' | 'unique' | 'legendary'
 export type SkillKind = 'active' | 'passive'
-export type SkillMetricKind = 'weaponDamagePct' | 'chargeScalePct' | 'manaCost' | 'manaPerSecond' | 'maxTargets' | 'projectiles'
+export type SkillMetricKind =
+  | 'weaponDamagePct'
+  | 'chargeScalePct'
+  | 'manaCost'
+  | 'manaPerSecond'
+  | 'maxTargets'
+  | 'projectiles'
 
-export interface RawEffect {
+export interface DisplayEffect {
   type: string
   name: string
   activation: string
   damageType: string
   duration: number | null
-  chance: number | null
   min: number | null
   max: number | null
-  useOwnerLevel: boolean
-  template?: LocalText | null
+  text?: LocalText
+  template?: LocalText
   displayName?: LocalText | null
   values?: Record<string, number | null>
   precision?: number
-  precisionMax?: number | null
   scalingGraph?: string | null
-  text?: LocalText | null
-  renderStatus?: string
-  valueSemantic?: string
-  roundingMode?: string
   socketTargets?: ('weapon' | 'armor')[]
 }
 
-export interface DbRawSetBonus extends RawEffect { pieces: number }
+export interface SetBonus extends DisplayEffect {
+  pieces: number
+}
 
 export interface DbEquipment {
   id: string
-  slug: string
   name: LocalText
-  internalName: string
   category: ItemCategory
   subtype: string
-  unitType: string
   rarity: Rarity
   rarityValue: number | null
   value: number
@@ -46,23 +45,20 @@ export interface DbEquipment {
   sockets: number
   speed: number | null
   damagePerSecond: [number, number] | null
-  set: LocalText | null
-  description: LocalText | null
-  iconPath: string | null
-  setInternalName: string | null
-  maxSockets: number | null
   blockChance: number | null
   minimumDropLevel: number | null
   maximumDropLevel: number | null
   classRequirement: string | null
+  set: LocalText | null
+  setInternalName: string | null
+  description: LocalText | null
+  iconPath: string | null
   armor: Record<string, [number, number]>
   damage: Record<string, [number, number]>
-  effects: RawEffect[]
-  rawSetBonuses: DbRawSetBonus[]
+  effects: DisplayEffect[]
+  setBonuses: SetBonus[]
   ngTier: number
   ngVariantOf: string | null
-  panelFormulaVersion: string
-  sourceFile: string
 }
 
 export interface DbSpellBook {
@@ -75,20 +71,21 @@ export interface DbSpellBook {
   requiredLevel: number
   description: LocalText
   iconPath: string | null
-  sourceFile: string
-  unobtainable?: true
 }
 
 export interface DbSkillRank {
   rank: number
   requiredLevel: number
-  metrics: { kind: SkillMetricKind; value: number; scalingGraph?: string | null }[]
-  effects: RawEffect[]
+  description: LocalText | null
+  metrics: { kind: SkillMetricKind; value: number; scalingGraph: string | null }[]
+  effects: DisplayEffect[]
 }
 
 export interface DbClassSkill {
   id: string
-  slug: string
+  classId: string
+  treeIndex: number
+  position: number
   name: LocalText
   description: LocalText
   requirement: LocalText | null
@@ -96,49 +93,50 @@ export interface DbClassSkill {
   kind: SkillKind
   maxRank: number
   iconPath: string | null
-  cooldownMs: number | null
-  range: number | null
   tiers: { rank: number; text: LocalText }[]
   ranks: DbSkillRank[]
 }
 
-export interface DbClassGroup {
-  classId: string
-  trees: { treeId: string; skills: DbClassSkill[] }[]
+export interface DbPhaseChallenge {
+  id: string
+  name: LocalText
 }
-
-export interface DbPhaseChallenge { id: string; name: LocalText }
-export interface DbPhaseBeast { id: string; act: number; region: LocalText; challenges: DbPhaseChallenge[] }
+export interface DbPhaseBeast {
+  id: string
+  act: number
+  region: LocalText
+  challenges: DbPhaseChallenge[]
+  undocumented: number
+}
 
 export interface DbMeta {
-  schemaVersion: number
-  sourceFingerprint: string
+  version: number
   counts: {
     equipment: number
-    ngVariantGroups: number
-    ngVariantRecords: number
     itemEffects: number
     spellBooks: number
-    localizedSpellBooks: number
     classSkills: number
     skillRanks: number
+    phaseRooms: number
     phaseChallenges: number
-    icons: number
   }
-  gaps: Record<string, number>
 }
 
-export type SkillGraphs = Record<string, [number, number][]>
+export interface SkillGraph {
+  inferPastEnd: boolean
+  points: [number, number][]
+}
+export type SkillGraphs = Record<string, SkillGraph>
 
 export interface SiteData {
   equipment: DbEquipment[]
   spellBooks: DbSpellBook[]
-  classSkills: DbClassGroup[]
+  classSkills: DbClassSkill[]
   skillGraphs: SkillGraphs
   phaseBeasts: DbPhaseBeast[]
   meta: DbMeta
 }
 
-export const asset = (path: string | null) => path ? `${import.meta.env.BASE_URL}${path}` : ''
+export const asset = (path: string | null) => (path ? `${import.meta.env.BASE_URL}${path}` : '')
 export const allText = (value: LocalText) => `${value.en} ${value.zhCN} ${value.zhTW}`
-export const ngLabel = (tier: number) => tier === 1 ? 'NG+' : tier > 1 ? `NG+${tier}` : null
+export const ngLabel = (tier: number) => (tier === 1 ? 'NG+' : tier > 1 ? `NG+${tier}` : null)
