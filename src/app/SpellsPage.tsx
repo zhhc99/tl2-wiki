@@ -2,27 +2,23 @@ import { useMemo, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { allText, asset, type DbSpellBook } from '../domain'
 import { copy, pick, tr } from '../i18n'
-import { SelectControl } from '../SelectControl'
 import type { Lang } from '../types'
 import { Loading, originalName, PageHeader } from '../WikiUi'
 
 export function SpellsPage({ lang, spells }: { lang: Lang; spells: DbSpellBook[] }) {
-  const [school, setSchool] = useState<'all' | DbSpellBook['school']>('all')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<DbSpellBook | null>(null)
   const families = useMemo(() => {
     const map = new Map<string, DbSpellBook[]>()
     spells
-      .filter(
-        (spell) =>
-          (school === 'all' || spell.school === school) &&
-          `${allText(spell.family)} ${allText(spell.description)}`
-            .toLowerCase()
-            .includes(query.toLowerCase()),
+      .filter((spell) =>
+        `${allText(spell.family)} ${allText(spell.description)}`
+          .toLowerCase()
+          .includes(query.toLowerCase()),
       )
       .forEach((spell) => map.set(spell.family.en, [...(map.get(spell.family.en) || []), spell]))
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
-  }, [spells, school, query])
+  }, [spells, query])
   return (
     <>
       <PageHeader section={tr(lang, 'navSpells')} title={tr(lang, 'spellsTitle')}>
@@ -43,18 +39,6 @@ export function SpellsPage({ lang, spells }: { lang: Lang; spells: DbSpellBook[]
               placeholder={copy(lang, '搜索技能书…', 'Search spell books…', '搜尋技能書…')}
             />
           </label>
-          <SelectControl
-            className="filter-select"
-            label={copy(lang, '技能书类型', 'Spell-book type', '技能書類型')}
-            value={school}
-            onChange={(value) => setSchool(value as typeof school)}
-            options={[
-              { value: 'all', label: tr(lang, 'all') },
-              ...(['offense', 'defense', 'summon', 'utility'] as DbSpellBook['school'][]).map(
-                (value) => ({ value, label: tr(lang, value) }),
-              ),
-            ]}
-          />
         </div>
         <div className="result-meta">
           <span>
@@ -74,7 +58,6 @@ export function SpellsPage({ lang, spells }: { lang: Lang; spells: DbSpellBook[]
               <article key={family}>
                 <img className="spell-icon" src={asset(tiers[0].iconPath)} alt="" />
                 <div>
-                  <span className={`school ${tiers[0].school}`}>{tr(lang, tiers[0].school)}</span>
                   <h2>{pick(tiers[0].family, lang)}</h2>
                   {originalName(tiers[0].family, lang) && (
                     <small className="original-name">{tiers[0].family.en}</small>
@@ -122,7 +105,6 @@ function SpellDrawer({
         <div className="drawer-title">
           <img src={asset(spell.iconPath)} alt="" />
           <div>
-            <span className={`school ${spell.school}`}>{tr(lang, spell.school)}</span>
             <h2>{pick(spell.name, lang)}</h2>
             {originalName(spell.name, lang) && (
               <small className="original-name">{spell.name.en}</small>

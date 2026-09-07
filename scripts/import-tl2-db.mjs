@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
@@ -12,7 +12,7 @@ const iconOutputDir = resolve(projectDir, 'public/game-icons')
 const metadata = Object.fromEntries(
   query('SELECT key,value FROM metadata').map((row) => [row.key, row.value]),
 )
-if (metadata.schema_version !== '2')
+if (metadata.schema_version !== '3')
   throw new Error(`Unsupported tl2-db schema: ${metadata.schema_version}`)
 
 const clean = (value) => String(value ?? '').trim()
@@ -168,12 +168,29 @@ const skillEffects = groupBy(
 )
 const skillTiers = keyedRows('SELECT * FROM wiki_skill_tiers ORDER BY skill_id,rank', 'skill_id')
 const usedGraphs = new Set()
+const classOrder = ['berserker', 'outlander', 'embermage', 'engineer']
+const classRows = new Map(query('SELECT * FROM wiki_classes').map((row) => [row.class_id, row]))
+const skillTreeRows = query('SELECT * FROM wiki_class_skill_trees ORDER BY class_id,tree_index')
+const skillTrees = groupBy(skillTreeRows, (row) => row.class_id)
+const classes = classOrder.map((id) => {
+  const row = classRows.get(id)
+  return {
+    id,
+    name: local(row, 'name'),
+    description: local(row, 'description'),
+    trees: (skillTrees.get(id) || []).map((tree) => ({
+      id: tree.tree_id,
+      index: tree.tree_index,
+      name: local(tree, 'name'),
+    })),
+  }
+})
 const classSkills = query(`
   SELECT * FROM wiki_class_skills ORDER BY class_id,tree_index,position
 `).map((skill) => ({
   id: String(skill.skill_id),
   classId: skill.class_id,
-  treeIndex: skill.tree_index,
+  treeId: skill.tree_id,
   position: skill.position,
   name: local(skill, 'name'),
   description: local(skill, 'description'),
@@ -238,9 +255,6 @@ const skillGraphs = Object.fromEntries(
   ]),
 )
 
-const spellSchools = JSON.parse(
-  readFileSync(resolve(projectDir, 'scripts/spell-book-schools.json'), 'utf8'),
-)
 const spellBooks = query(`
   SELECT * FROM wiki_skill_books WHERE obtainable=1 ORDER BY family_en,tier,record_id
 `).map((book) => ({
@@ -248,7 +262,6 @@ const spellBooks = query(`
   name: local(book, 'name'),
   family: local(book, 'family'),
   tier: book.tier,
-  school: spellSchools[book.family_en],
   level: book.item_level,
   requiredLevel: book.required_level,
   description: local(book, 'description'),
@@ -306,11 +319,13 @@ const phaseBeasts = Object.entries(phaseZones).map(([actZone, zone]) => {
 })
 
 const meta = {
-  version: 1,
+  version: 2,
   counts: {
     equipment: equipment.length,
     itemEffects: equipment.reduce((sum, item) => sum + item.effects.length, 0),
     spellBooks: spellBooks.length,
+    classes: classes.length,
+    skillTrees: classes.reduce((sum, hero) => sum + hero.trees.length, 0),
     classSkills: classSkills.length,
     skillRanks: classSkills.reduce((sum, skill) => sum + skill.ranks.length, 0),
     phaseRooms: phaseBeasts.reduce(
@@ -326,6 +341,7 @@ rmSync(iconOutputDir, { recursive: true, force: true })
 cpSync(resolve(dbDir, 'build/icons'), iconOutputDir, { recursive: true })
 const write = (name, value) => writeFileSync(resolve(outputDir, name), `${JSON.stringify(value)}\n`)
 write('equipment.json', equipment)
+write('classes.json', classes)
 write('class-skills.json', classSkills)
 write('skill-graphs.json', skillGraphs)
 write('spell-books.json', spellBooks)
@@ -334,5 +350,5 @@ write('meta.json', meta)
 database.close()
 
 console.log(
-  `Imported ${equipment.length} equipment, ${classSkills.length} class skills, ${spellBooks.length} obtainable skill books, and ${meta.counts.phaseRooms} Phase Beast rooms`,
+  `Imported ${classes.length} classes, ${meta.counts.skillTrees} skill trees, ${classSkills.length} class skills, ${spellBooks.length} obtainable skill books, and ${meta.counts.phaseRooms} Phase Beast rooms`,
 )

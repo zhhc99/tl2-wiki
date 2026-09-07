@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { classes } from '../data'
-import { asset, type DbClassSkill, type DbSkillRank, type SkillGraphs } from '../domain'
+import { classPresentation } from '../data'
+import {
+  asset,
+  type DbClass,
+  type DbClassSkill,
+  type DbSkillRank,
+  type SkillGraphs,
+} from '../domain'
 import { copy, pick, tr } from '../i18n'
 import { NumberInput } from '../NumberInput'
 import type { Lang } from '../types'
@@ -13,6 +19,7 @@ export function ClassesPage({
   lang,
   classId,
   setClassId,
+  classes,
   classSkills,
   skillGraphs,
   focus,
@@ -20,16 +27,15 @@ export function ClassesPage({
   lang: Lang
   classId: string
   setClassId: (id: string) => void
+  classes: DbClass[]
   classSkills: DbClassSkill[]
   skillGraphs: SkillGraphs
   focus: SkillFocus | null
 }) {
   const hero = classes.find((item) => item.id === classId) ?? classes[0]
-  const trees = hero.trees.map((tree, treeIndex) => ({
+  const trees = hero.trees.map((tree) => ({
     ...tree,
-    skills: classSkills.filter(
-      (skill) => skill.classId === hero.id && skill.treeIndex === treeIndex,
-    ),
+    skills: classSkills.filter((skill) => skill.classId === hero.id && skill.treeId === tree.id),
   }))
   const [treeId, setTreeId] = useState(trees[0].id)
   const tree = trees.find((item) => item.id === treeId) ?? trees[0]
@@ -69,7 +75,9 @@ export function ClassesPage({
               className={item.id === hero.id ? 'active' : ''}
               onClick={() => setClassId(item.id)}
             >
-              <span style={{ color: item.accent }}>{item.monogram}</span>
+              <span style={{ color: classPresentation[item.id].accent }}>
+                {classPresentation[item.id].monogram}
+              </span>
               {pick(item.name, lang)}
             </button>
           ))}

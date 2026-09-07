@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { ArrowRight, CircleDollarSign, X } from 'lucide-react'
-import { asset, ngLabel, type DbEquipment } from '../domain'
+import { asset, ngLabel, type DbClass, type DbEquipment } from '../domain'
 import { copy, pick, tr } from '../i18n'
 import { canGambleEquipment, gambleTypeForEquipment } from '../gambling'
 import { SelectControl } from '../SelectControl'
@@ -12,12 +12,14 @@ import { NgBadge, originalName, StatPill } from '../WikiUi'
 export function EquipmentDrawer({
   item,
   variants,
+  classes,
   lang,
   onClose,
   onGamble,
 }: {
   item: DbEquipment
   variants: DbEquipment[]
+  classes: DbClass[]
   lang: Lang
   onClose: () => void
   onGamble: (item: DbEquipment) => void
@@ -128,7 +130,7 @@ export function EquipmentDrawer({
             {current.classRequirement && (
               <p className="requirement-class">
                 <strong>{copy(lang, '职业：', 'Class:', '職業：')}</strong>
-                {classRequirementName(current.classRequirement, lang)}
+                {classRequirementName(current.classRequirement, classes, lang)}
               </p>
             )}
           </DetailSection>

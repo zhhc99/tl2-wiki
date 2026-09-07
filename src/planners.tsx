@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { classes } from './data'
 import { copy } from './i18n'
-import { type DbEquipment as PlannerEquipment } from './domain'
+import { type DbClass, type DbEquipment as PlannerEquipment } from './domain'
 import { PageHeader } from './WikiUi'
 import type { Lang } from './types'
 import {
@@ -32,7 +31,15 @@ import {
 } from './planner/model'
 import { parseBuild, serializeBuild } from './planner/transfer'
 
-export function BuildsPage({ lang, items }: { lang: Lang; items: PlannerEquipment[] }) {
+export function BuildsPage({
+  lang,
+  items,
+  classes,
+}: {
+  lang: Lang
+  items: PlannerEquipment[]
+  classes: DbClass[]
+}) {
   const [classId, setClassId] = useState('berserker')
   const [level, setLevel] = useState(100)
   const [allocated, setAllocated] = useState<Record<Stat, number>>({
@@ -400,6 +407,7 @@ export function BuildsPage({ lang, items }: { lang: Lang; items: PlannerEquipmen
       <BuildWorkspace
         lang={lang}
         itemsReady={Boolean(items.length)}
+        classes={classes}
         classId={classId}
         level={level}
         allocated={allocated}

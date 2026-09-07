@@ -66,11 +66,23 @@ export interface DbSpellBook {
   name: LocalText
   family: LocalText
   tier: number
-  school: 'offense' | 'defense' | 'summon' | 'utility'
   level: number
   requiredLevel: number
   description: LocalText
   iconPath: string | null
+}
+
+export interface DbClassSkillTree {
+  id: number
+  index: number
+  name: LocalText
+}
+
+export interface DbClass {
+  id: string
+  name: LocalText
+  description: LocalText
+  trees: DbClassSkillTree[]
 }
 
 export interface DbSkillRank {
@@ -84,7 +96,7 @@ export interface DbSkillRank {
 export interface DbClassSkill {
   id: string
   classId: string
-  treeIndex: number
+  treeId: number
   position: number
   name: LocalText
   description: LocalText
@@ -115,6 +127,8 @@ export interface DbMeta {
     equipment: number
     itemEffects: number
     spellBooks: number
+    classes: number
+    skillTrees: number
     classSkills: number
     skillRanks: number
     phaseRooms: number
@@ -131,6 +145,7 @@ export type SkillGraphs = Record<string, SkillGraph>
 export interface SiteData {
   equipment: DbEquipment[]
   spellBooks: DbSpellBook[]
+  classes: DbClass[]
   classSkills: DbClassSkill[]
   skillGraphs: SkillGraphs
   phaseBeasts: DbPhaseBeast[]

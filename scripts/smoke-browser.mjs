@@ -90,9 +90,44 @@ const globalItemSearch = await evaluate(
 )
 if (!globalItemSearch)
   throw new Error('Global equipment search did not populate and run the equipment-library search')
+await evaluate(
+  `window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',code:'KeyK',ctrlKey:true,bubbles:true}))`,
+)
+await wait(80)
+await evaluate(
+  `(() => { const input=document.querySelector('.search-input input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"Alchemist Ring of Blood NG+"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
+)
+await wait(150)
+const ngSearchResult = await evaluate(
+  `document.querySelector('.search-list > button')?.textContent.includes('NG+')`,
+)
+if (!ngSearchResult) throw new Error('Global search did not find an NG equipment variant')
+await evaluate(`document.querySelector('.search-list > button')?.click()`)
+await wait(150)
+const normalizedNgSearch = await evaluate(
+  `document.querySelector('.data-search input')?.value==='煉金術士的鮮血戒指'`,
+)
+if (!normalizedNgSearch)
+  throw new Error('Global search included the NG label in the equipment query')
 
 await evaluate(`location.hash='#/classes'`)
 await wait(250)
+const classNavigation = await evaluate(
+  `(() => { const names=[...document.querySelectorAll('.class-tabs button')].map(button=>button.textContent.trim()); return names.join('|')==='BZ狂戰士|OL異域行者|EM燼法師|EN工程師'; })()`,
+)
+if (!classNavigation) throw new Error('Class tabs were not rendered in the database order')
+const defaultSkillTrees = await evaluate(
+  `(() => { const names=[...document.querySelectorAll('.tree-tabs button')].map(button=>button.textContent.trim()); return ['獵人','雪原','影子'].every(name=>names.some(value=>value.startsWith(name))); })()`,
+)
+if (!defaultSkillTrees) throw new Error('Database skill tree names were not rendered')
+const skillTreeSizes = []
+for (let index = 0; index < 3; index += 1) {
+  await evaluate(`document.querySelectorAll('.tree-tabs button')[${index}]?.click()`)
+  await wait(80)
+  skillTreeSizes.push(await evaluate(`document.querySelectorAll('.skill-table > button').length`))
+}
+if (skillTreeSizes.some((count) => count !== 10))
+  throw new Error('A database skill tree did not render 10 skills')
 const skillData = await evaluate(
   `Boolean(document.querySelector('.skill-table img')?.complete && document.querySelector('.rank-control input')?.max==='15' && document.querySelector('.skill-metrics'))`,
 )
@@ -244,24 +279,20 @@ if (!keyboardSelect)
 await chooseOption('.data-toolbar .select-control:nth-of-type(2)', 'all')
 await evaluate(`location.hash='#/mechanics'`)
 await wait(200)
-const socketRules = await evaluate(
-  `(() => { const paragraphs=document.querySelectorAll('.socket-rule-copy'); const text=paragraphs[0]?.textContent||''; return paragraphs.length===1 && paragraphs[0].querySelectorAll(':scope > span').length===3 && text.includes('最多 2 孔') && text.includes('打孔匠朱瑞克') && text.includes('「窒息」') && text.includes('「奧拉克之手」') && text.includes('牧牛人領地盾') && text.indexOf('一般初始孔數')<text.indexOf('打孔上限') && text.indexOf('打孔上限')<text.indexOf('特殊裝備'); })()`,
-)
-if (!socketRules) throw new Error('Socket mechanics were not rendered')
 const focusMechanics = await evaluate(
-  `(() => { const card=document.querySelector('.stat-summary.foc'); const tips=card?.querySelectorAll('.inline-tooltip [role="tooltip"]'); return Boolean(card?.textContent.includes('0.5 點法力上限') && card?.textContent.includes('0.5% 的任何固定傷害') && tips?.[0]?.textContent.includes('投擲迴旋鏢') && tips?.[0]?.textContent.includes('DoT') && tips?.[1]?.textContent.includes('DPS%')); })()`,
+  `(() => { const card=document.querySelector('.stat-summary.foc'); const tips=card?.querySelectorAll('.inline-tooltip [role="tooltip"]'); return Boolean(card?.textContent.includes('0.5 點法力上限') && card?.textContent.includes('0.5% 的元素傷害') && card?.textContent.includes('0.5% 的物理固傷') && card?.textContent.includes('處決（猛擊）機率') && tips?.[0]?.textContent.includes('屬性面板') && tips?.[1]?.textContent.includes('破碎之刃')); })()`,
 )
-if (!focusMechanics) throw new Error('Focus fixed-damage copy or tooltip was not rendered')
+if (!focusMechanics) throw new Error('Updated Focus mechanics copy or tooltip was not rendered')
 await chooseOption('.locale-select', 'en')
-const englishSocketCopy = await evaluate(
-  `document.querySelector('.socket-rule-copy')?.textContent.includes('Initial sockets.') && document.body.textContent.includes('Socketing cap.') && document.body.textContent.includes('Special items.') && document.body.textContent.includes('Jurick the Socketer')`,
+const englishMechanics = await evaluate(
+  `(() => { const body=document.body.textContent; return body.includes('0.5% elemental damage') && body.includes('0.5% physical fixed damage') && body.includes('0.2% execute chance') && body.includes('0.2% block chance') && document.querySelector('.stat-summary.str [role="tooltip"]')?.textContent.includes('+50%') && document.querySelector('.stat-summary.dex [role="tooltip"]')?.textContent.includes('capped at 50%'); })()`,
 )
-if (!englishSocketCopy) throw new Error('English socket-rule copy was not localized')
+if (!englishMechanics) throw new Error('English attribute copy or tooltip was not localized')
 await chooseOption('.locale-select', 'zh-CN')
-const simplifiedSocketCopy = await evaluate(
-  `document.querySelector('.socket-rule-copy')?.textContent.includes('一般初始孔数：') && document.body.textContent.includes('特殊装备：') && document.body.textContent.includes('打孔师朱瑞克') && document.body.textContent.includes('“奥拉克之手”') && document.body.textContent.includes('冥界盾牌')`,
+const simplifiedMechanics = await evaluate(
+  `(() => { const body=document.body.textContent; return body.includes('0.5% 的元素伤害') && body.includes('0.5% 的物理固伤') && body.includes('0.2% 的处决（猛击）几率') && body.includes('0.2% 的格挡几率') && body.includes('初始暴击伤害为 +50%'); })()`,
 )
-if (!simplifiedSocketCopy) throw new Error('Simplified Chinese socket-rule copy was not localized')
+if (!simplifiedMechanics) throw new Error('Simplified Chinese attribute copy was not localized')
 await chooseOption('.locale-select', 'zh-TW')
 
 await evaluate(`location.hash='#/builds'`)
@@ -515,6 +546,11 @@ const spellAvailability = await evaluate(
   `(() => { const text=document.body.textContent; return ['Bee Swarm','Summon Blood Zombie','Web'].every(name=>text.includes(name)) && ['Critical Strikes','Identify Spell','Poison Cloud','Summon Aloe Gel','Summon Blood Skeleton','Summon Flaming Sword','Tunnelers','Waypoint Portal Spell','Whirling Flames'].every(name=>!text.includes(name)) })()`,
 )
 if (!spellAvailability) throw new Error('Spell-book availability filtering is incorrect')
+const spellBookLayout = await evaluate(
+  `(() => { const toolbar=document.querySelector('.data-toolbar'); const family=document.querySelector('.spell-families article > div'); return toolbar?.children.length===1 && toolbar.querySelector('input') && !toolbar.querySelector('[role="listbox"],select') && family?.firstElementChild?.tagName==='H2'; })()`,
+)
+if (!spellBookLayout)
+  throw new Error('Spell-book search layout still exposes a type filter or label')
 await evaluate(`location.hash='#/phases'`)
 await wait(250)
 const phasePage = await evaluate(
@@ -533,10 +569,10 @@ if (!mobileFits) throw new Error('Mobile layout has horizontal overflow')
 await evaluate(`location.hash='#/mechanics'`)
 await wait(150)
 const mobileMechanicsFits = await evaluate(
-  `document.documentElement.scrollWidth <= 390 && document.querySelectorAll('.socket-rule-copy').length===1`,
+  `document.documentElement.scrollWidth <= 390 && document.querySelectorAll('.matrix-section').length===1`,
 )
 if (!mobileMechanicsFits)
-  throw new Error('Mobile socket mechanics overflow or lost their single-paragraph structure')
+  throw new Error('Mobile mechanics layout overflowed or lost the hit matrix')
 await evaluate(`location.hash='#/builds'`)
 await wait(150)
 const mobileBuildFits = await evaluate(

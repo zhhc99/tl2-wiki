@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Info } from 'lucide-react'
 import {
+  type DbClass,
   type DbClassSkill,
   type DbEquipment,
   type DbMeta,
@@ -57,13 +58,14 @@ function App() {
     Promise.all([
       loadJson<DbEquipment[]>(`${base}data/equipment.json`),
       loadJson<DbSpellBook[]>(`${base}data/spell-books.json`),
+      loadJson<DbClass[]>(`${base}data/classes.json`),
       loadJson<DbClassSkill[]>(`${base}data/class-skills.json`),
       loadJson<SkillGraphs>(`${base}data/skill-graphs.json`),
       loadJson<DbPhaseBeast[]>(`${base}data/phase-beasts.json`),
       loadJson<DbMeta>(`${base}data/meta.json`),
     ])
-      .then(([equipment, spellBooks, classSkills, skillGraphs, phaseBeasts, meta]) => {
-        setSiteData({ equipment, spellBooks, classSkills, skillGraphs, phaseBeasts, meta })
+      .then(([equipment, spellBooks, classes, classSkills, skillGraphs, phaseBeasts, meta]) => {
+        setSiteData({ equipment, spellBooks, classes, classSkills, skillGraphs, phaseBeasts, meta })
       })
       .catch(() => setDataError(true))
   }, [])
@@ -166,6 +168,7 @@ function App() {
                 lang={lang}
                 classId={classId}
                 setClassId={setClassId}
+                classes={siteData.classes}
                 classSkills={siteData.classSkills}
                 skillGraphs={siteData.skillGraphs}
                 focus={skillFocus}
@@ -176,11 +179,14 @@ function App() {
               <ItemsPage
                 lang={lang}
                 items={siteData.equipment}
+                classes={siteData.classes}
                 searchRequest={itemSearchRequest}
                 onGamble={openGambling}
               />
             )}
-            {page === 'builds' && <BuildsPage lang={lang} items={siteData.equipment} />}
+            {page === 'builds' && (
+              <BuildsPage lang={lang} items={siteData.equipment} classes={siteData.classes} />
+            )}
             {page === 'gambling' && <GamblingPage lang={lang} items={siteData.equipment} />}
             {page === 'spells' && <SpellsPage lang={lang} spells={siteData.spellBooks} />}
             {page === 'phases' && <PhasesPage lang={lang} phaseBeasts={siteData.phaseBeasts} />}

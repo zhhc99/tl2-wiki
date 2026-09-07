@@ -1,5 +1,4 @@
-import { classes } from '../data'
-import { type Rarity } from '../domain'
+import { type DbClass, type Rarity } from '../domain'
 import { pick } from '../i18n'
 import type { Lang, LocalText } from '../types'
 
@@ -57,16 +56,12 @@ export function rarityName(rarity: Rarity, lang: Lang): string {
   return pick(names[rarity], lang)
 }
 
-export const classRequirementName = (requirement: string, lang: Lang) => {
+export const classRequirementName = (requirement: string, classes: DbClass[], lang: Lang) => {
   const aliases: Record<string, string> = {
     wanderer: 'outlander',
     arbiter: 'embermage',
     railman: 'engineer',
   }
   const id = aliases[requirement.toLowerCase()] || requirement.toLowerCase()
-  return pick(
-    classes.find((hero) => hero.id === id)?.name ||
-      localText(requirement, requirement, requirement),
-    lang,
-  )
+  return pick(classes.find((hero) => hero.id === id)!.name, lang)
 }

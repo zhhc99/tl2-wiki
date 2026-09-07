@@ -1,6 +1,5 @@
 import { CircleAlert, ClipboardCopy, ClipboardPaste, Eye, Gem, RotateCcw, X } from 'lucide-react'
-import { classes } from '../data'
-import { asset, type DbEquipment as PlannerEquipment } from '../domain'
+import { asset, type DbClass, type DbEquipment as PlannerEquipment } from '../domain'
 import { copy, pick } from '../i18n'
 import { NumberInput } from '../NumberInput'
 import { SelectControl } from '../SelectControl'
@@ -22,6 +21,7 @@ import {
 export interface BuildWorkspaceProps {
   lang: Lang
   itemsReady: boolean
+  classes: DbClass[]
   classId: string
   level: number
   allocated: Record<Stat, number>
@@ -43,6 +43,7 @@ export interface BuildWorkspaceProps {
 export function BuildWorkspace({
   lang,
   itemsReady,
+  classes,
   classId,
   level,
   allocated,

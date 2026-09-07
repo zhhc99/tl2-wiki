@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { ArrowRight, BookOpen, Compass, Search, Shield, Swords, X, Zap } from 'lucide-react'
-import { classes } from '../data'
 import { allText, asset, ngLabel, type SiteData } from '../domain'
 import { copy, pick, tr } from '../i18n'
 import type { Lang } from '../types'
@@ -52,7 +51,7 @@ export function SearchOverlay({
     const needle = query.trim().toLowerCase()
     if (!needle) return []
     const out: SearchResult[] = []
-    classes.forEach((hero) => {
+    data.classes.forEach((hero) => {
       if (`${allText(hero.name)} ${allText(hero.description)}`.toLowerCase().includes(needle))
         out.push({
           type: 'class',
@@ -67,7 +66,7 @@ export function SearchOverlay({
         out.push({
           type: 'skill',
           name: pick(skill.name, lang),
-          sub: `${pick(classes.find((hero) => hero.id === skill.classId)?.name || skill.name, lang)} · ${skill.kind === 'active' ? tr(lang, 'active') : tr(lang, 'passive')}`,
+          sub: `${pick(data.classes.find((hero) => hero.id === skill.classId)?.name || skill.name, lang)} · ${skill.kind === 'active' ? tr(lang, 'active') : tr(lang, 'passive')}`,
           page: 'classes',
           classId: skill.classId,
           skillId: skill.id,
@@ -86,7 +85,7 @@ export function SearchOverlay({
           name: `${pick(item.name, lang)}${variant ? ` (${variant})` : ''}`,
           sub: `${subtypeName(item.subtype, lang)} · Lv ${item.level}`,
           page: 'items',
-          itemQuery: `${pick(item.name, lang)}${variant ? ` ${variant}` : ''}`,
+          itemQuery: pick(item.name, lang),
           image: item.iconPath,
         })
       }

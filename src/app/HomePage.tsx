@@ -1,5 +1,5 @@
 import { ArrowRight, BookOpen, Hammer, Search, SlidersHorizontal, Swords } from 'lucide-react'
-import { classes, statInfo } from '../data'
+import { classPresentation, statInfo } from '../data'
 import { pick, copy, tr } from '../i18n'
 import type { SiteData } from '../domain'
 import type { Lang } from '../types'
@@ -29,9 +29,9 @@ export function HomePage({
       title: tr(lang, 'navClasses'),
       text: copy(
         lang,
-        '4 个职业、12 棵技能树和 1,800 条等级数据',
-        '4 classes, 12 skill trees and 1,800 rank records',
-        '4 個職業、12 個技能樹與 1,800 筆等級資料',
+        `${counts.classes} 个职业、${counts.skillTrees} 棵技能树和 ${counts.skillRanks.toLocaleString()} 条等级数据`,
+        `${counts.classes} classes, ${counts.skillTrees} skill trees and ${counts.skillRanks.toLocaleString()} rank records`,
+        `${counts.classes} 個職業、${counts.skillTrees} 個技能樹與 ${counts.skillRanks.toLocaleString()} 筆等級資料`,
       ),
       count: counts.classSkills,
     },
@@ -130,10 +130,10 @@ export function HomePage({
               title={copy(lang, '选择职业', 'Choose a class', '選擇職業')}
             />
             <div className="class-list">
-              {classes.map((hero) => (
+              {data.classes.map((hero) => (
                 <button key={hero.id} onClick={() => onClass(hero.id)}>
-                  <span className="class-code" style={{ color: hero.accent }}>
-                    {hero.monogram}
+                  <span className="class-code" style={{ color: classPresentation[hero.id].accent }}>
+                    {classPresentation[hero.id].monogram}
                   </span>
                   <span>
                     <b>{pick(hero.name, lang)}</b>

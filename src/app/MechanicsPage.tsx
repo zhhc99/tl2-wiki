@@ -72,41 +72,6 @@ export function MechanicsPage({ lang }: { lang: Lang }) {
             </article>
           ))}
         </div>
-        <section className="socket-section">
-          <SectionTitle
-            eyebrow={copy(lang, '装备', 'Equipment', '裝備')}
-            title={copy(lang, '孔数规则', 'Socket rules', '孔數規則')}
-          />
-          <p className="socket-rule-copy">
-            <span>
-              <strong>{copy(lang, '一般初始孔数：', 'Initial sockets.', '一般初始孔數：')}</strong>
-              {copy(
-                lang,
-                '普通装备掉落时最多 2 孔，盾牌也按护甲计算。只有武器例外：附魔绿色武器最多 3 孔，稀有蓝色武器最多 4 孔。',
-                'Ordinary equipment can drop with up to 2 sockets, and shields count as armor. Only weapons are exceptions: enchanted green weapons can have up to 3 sockets and rare blue weapons up to 4.',
-                '一般裝備掉落時最多 2 孔，盾牌也視為護甲。只有武器例外：附魔綠色武器最多 3 孔，稀有藍色武器最多 4 孔。',
-              )}
-            </span>
-            <span>
-              <strong>{copy(lang, '打孔上限：', 'Socketing cap.', '打孔上限：')}</strong>
-              {copy(
-                lang,
-                '打孔师朱瑞克只能为不足 2 孔的装备补孔，达到 2 孔后便无法继续增加。',
-                'Jurick the Socketer can add sockets only until an item reaches 2; he cannot add another socket to an item that already has 2 or more.',
-                '打孔匠朱瑞克只能替不足 2 孔的裝備補孔，達到 2 孔後便無法再增加。',
-              )}
-            </span>
-            <span>
-              <strong>{copy(lang, '特殊装备：', 'Special items.', '特殊裝備：')}</strong>
-              {copy(
-                lang,
-                '“窒息”和“奥拉克之手”各有 5 孔；冥界系列的单手武器和冥界盾牌为 4 孔，双手武器为 5 孔。',
-                'The Asphyx and Hands of Orlac each have 5 sockets; Netherrealm one-hand weapons and the Netherrealm Shield have 4, while its two-hand weapons have 5.',
-                '「窒息」與「奧拉克之手」各有 5 孔；牧牛人領地系列的單手武器與牧牛人領地盾為 4 孔，雙手武器則為 5 孔。',
-              )}
-            </span>
-          </p>
-        </section>
         <section className="matrix-section">
           <SectionTitle
             eyebrow={copy(lang, '命中', 'Hits', '命中')}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
-import { allText, asset, ngLabel, type DbEquipment, type Rarity } from '../domain'
+import { allText, asset, ngLabel, type DbClass, type DbEquipment, type Rarity } from '../domain'
 import { copy, pick, tr, type UIKey } from '../i18n'
 import { SelectControl } from '../SelectControl'
 import type { ItemCategory, Lang } from '../types'
@@ -12,11 +12,13 @@ import { Loading, NgBadge, PageHeader } from '../WikiUi'
 export function ItemsPage({
   lang,
   items,
+  classes,
   searchRequest,
   onGamble,
 }: {
   lang: Lang
   items: DbEquipment[]
+  classes: DbClass[]
   searchRequest: ItemSearchRequest | null
   onGamble: (item: DbEquipment) => void
 }) {
@@ -188,7 +190,7 @@ export function ItemsPage({
                     <td>{item.level}</td>
                     <td>
                       {item.classRequirement
-                        ? classRequirementName(item.classRequirement, lang)
+                        ? classRequirementName(item.classRequirement, classes, lang)
                         : ''}
                     </td>
                     <td>
@@ -215,6 +217,7 @@ export function ItemsPage({
                     item.subtype === selected.subtype,
                 )
           }
+          classes={classes}
           lang={lang}
           onClose={() => setSelected(null)}
           onGamble={onGamble}

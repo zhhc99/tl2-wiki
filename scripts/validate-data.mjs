@@ -11,13 +11,14 @@ const unique = (rows) => new Set(rows.map((row) => row.id)).size === rows.length
 const iconExists = (row) => row.iconPath && existsSync(resolve(projectDir, 'public', row.iconPath))
 
 const equipment = read('equipment.json')
+const classes = read('classes.json')
 const skills = read('class-skills.json')
 const graphs = read('skill-graphs.json')
 const spells = read('spell-books.json')
 const phases = read('phase-beasts.json')
 const meta = read('meta.json')
 
-assert(meta.version === 1, 'Unexpected public data version')
+assert(meta.version === 2, 'Unexpected public data version')
 assert(
   equipment.length === 4029 && equipment.length === meta.counts.equipment,
   'Unexpected equipment count',
@@ -53,6 +54,28 @@ assert(
   'Socketable effect lacks a target',
 )
 
+const classOrder = ['berserker', 'outlander', 'embermage', 'engineer']
+const trees = classes.flatMap((hero) => hero.trees)
+const treeClasses = new Map(classes.flatMap((hero) => hero.trees.map((tree) => [tree.id, hero.id])))
+assert(classes.length === 4 && classes.length === meta.counts.classes, 'Unexpected class count')
+assert(
+  trees.length === 12 && trees.length === meta.counts.skillTrees,
+  'Unexpected skill tree count',
+)
+assert(classes.map((hero) => hero.id).join(',') === classOrder.join(','), 'Unexpected class order')
+assert(
+  unique(classes) &&
+    unique(trees) &&
+    classes.every(
+      (hero) =>
+        local(hero.name) &&
+        local(hero.description) &&
+        hero.trees.map((tree) => tree.index).join(',') === '0,1,2' &&
+        hero.trees.every((tree) => local(tree.name)),
+    ),
+  'Invalid class or skill tree identity',
+)
+
 assert(
   skills.length === 120 && skills.length === meta.counts.classSkills,
   'Unexpected class skill count',
@@ -65,9 +88,25 @@ assert(
 assert(
   skills.every(
     (skill) =>
-      skill.treeIndex >= 0 && skill.treeIndex < 3 && skill.position >= 0 && skill.position < 10,
+      Number.isInteger(skill.treeId) &&
+      treeClasses.get(skill.treeId) === skill.classId &&
+      Number.isInteger(skill.position) &&
+      skill.position >= 0 &&
+      skill.position < 10,
   ),
-  'Invalid skill position',
+  'Invalid skill tree relation or position',
+)
+const skillsByTree = new Map()
+for (const skill of skills)
+  skillsByTree.set(skill.treeId, [...(skillsByTree.get(skill.treeId) || []), skill])
+assert(
+  trees.every((tree) => {
+    const positions = (skillsByTree.get(tree.id) || [])
+      .map((skill) => skill.position)
+      .sort((a, b) => a - b)
+    return positions.join(',') === '0,1,2,3,4,5,6,7,8,9'
+  }),
+  'A skill tree does not have 10 ordered skills',
 )
 assert(
   skills.every((skill) => skill.ranks.length === 15),
@@ -115,14 +154,24 @@ assert(
   spells.length === 175 && spells.length === meta.counts.spellBooks,
   'Unexpected obtainable skill book count',
 )
+const spellBookKeys = [
+  'id',
+  'name',
+  'family',
+  'tier',
+  'level',
+  'requiredLevel',
+  'description',
+  'iconPath',
+]
 assert(
   unique(spells) &&
     spells.every(
       (spell) =>
+        Object.keys(spell).sort().join(',') === spellBookKeys.slice().sort().join(',') &&
         local(spell.name) &&
         local(spell.family) &&
         local(spell.description) &&
-        spell.school &&
         iconExists(spell),
     ),
   'Invalid skill book',
@@ -146,5 +195,5 @@ assert(
 )
 
 console.log(
-  `Validated ${equipment.length} equipment, ${skills.length} class skills, ${spells.length} skill books, and ${phaseRooms} Phase Beast rooms`,
+  `Validated ${equipment.length} equipment, ${classes.length} classes, ${trees.length} skill trees, ${skills.length} class skills, ${spells.length} skill books, and ${phaseRooms} Phase Beast rooms`,
 )
