@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
-import { allText, asset, ngLabel, type DbClass, type DbEquipment, type Rarity } from '../domain'
+import { Link } from 'react-router'
+import {
+  allText,
+  asset,
+  ngLabel,
+  type DbClass,
+  type DbEquipment,
+  type EquipmentIndexEntry,
+  type EquipmentSummary,
+  type Rarity,
+} from '../domain'
 import { copy, pick, tr, type UIKey } from '../i18n'
 import { SelectControl } from '../SelectControl'
 import type { ItemCategory, Lang } from '../types'
@@ -15,26 +25,38 @@ export function ItemsPage({
   classes,
   searchRequest,
   onGamble,
+  itemHref,
+  selected,
+  selectedVariants,
+  onSelect,
+  onClose,
+  dataReady = true,
+  totalCount = items.length,
 }: {
   lang: Lang
-  items: DbEquipment[]
+  items: EquipmentSummary[]
   classes: DbClass[]
   searchRequest: ItemSearchRequest | null
-  onGamble: (item: DbEquipment) => void
+  onGamble: (item: EquipmentSummary) => void
+  itemHref: (item: EquipmentSummary) => string
+  selected: DbEquipment | null
+  selectedVariants: DbEquipment[]
+  onSelect: (item: EquipmentSummary) => void
+  onClose: () => void
+  dataReady?: boolean
+  totalCount?: number
 }) {
   const [category, setCategory] = useState<'all' | ItemCategory>('all')
   const [rarity, setRarity] = useState<'all' | Rarity>('all')
   const [query, setQuery] = useState('')
   const [level, setLevel] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
-  const [selected, setSelected] = useState<DbEquipment | null>(null)
   useEffect(() => {
     if (!searchRequest) return
     setCategory('all')
     setRarity('all')
     setLevel('all')
     setQuery(searchRequest.query)
-    setSelected(null)
   }, [searchRequest])
   const filtered = useMemo(
     () =>
@@ -46,9 +68,10 @@ export function ItemsPage({
             (level === '100'
               ? item.level >= 100
               : item.level >= Number(level) && item.level < Number(level) + 20)) &&
-          `${allText(item.name)} ${ngLabel(item.ngTier) || ''} ${item.subtype} ${item.set ? allText(item.set) : ''} ${item.effects.map((effect) => (effect.text ? allText(effect.text) : '')).join(' ')}`
-            .toLowerCase()
-            .includes(query.toLowerCase()),
+          ('searchText' in item
+            ? (item as EquipmentIndexEntry).searchText
+            : `${allText(item.name)} ${ngLabel(item.ngTier) || ''} ${item.subtype} ${item.set ? allText(item.set) : ''}`
+          ).includes(query.toLowerCase()),
       ),
     [items, category, rarity, level, query],
   )
@@ -83,6 +106,7 @@ export function ItemsPage({
           <label className="data-search">
             <Search size={16} />
             <input
+              disabled={!dataReady}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={copy(
@@ -95,6 +119,7 @@ export function ItemsPage({
           </label>
           <SelectControl
             className="filter-select"
+            disabled={!dataReady}
             label={copy(lang, '装备类型', 'Equipment type', '裝備類型')}
             value={category}
             onChange={(value) => setCategory(value as typeof category)}
@@ -105,6 +130,7 @@ export function ItemsPage({
           />
           <SelectControl
             className="filter-select"
+            disabled={!dataReady}
             label={copy(lang, '稀有度', 'Rarity', '稀有度')}
             value={rarity}
             onChange={(value) => setRarity(value as typeof rarity)}
@@ -118,6 +144,7 @@ export function ItemsPage({
           />
           <SelectControl
             className="filter-select"
+            disabled={!dataReady}
             label={copy(lang, '物品等级', 'Item level', '物品等級')}
             value={level}
             onChange={setLevel}
@@ -132,7 +159,11 @@ export function ItemsPage({
         </div>
         <div className="result-meta">
           <span>
-            {filtered.length.toLocaleString()} {tr(lang, 'itemsFound')}
+            {(query || category !== 'all' || rarity !== 'all' || level !== 'all'
+              ? filtered.length
+              : totalCount
+            ).toLocaleString()}{' '}
+            {tr(lang, 'itemsFound')}
           </span>
           <span>
             {copy(
@@ -160,7 +191,7 @@ export function ItemsPage({
               </thead>
               <tbody>
                 {rows.map((item) => (
-                  <tr key={item.id} onClick={() => setSelected(item)}>
+                  <tr key={item.id} onClick={() => onSelect(item)}>
                     <td>
                       <div className="item-name">
                         <img
@@ -170,7 +201,17 @@ export function ItemsPage({
                         />
                         <span>
                           <b>
-                            {pick(item.name, lang)} <NgBadge tier={item.ngTier} />
+                            <Link
+                              to={itemHref(item)}
+                              preventScrollReset
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                onSelect(item)
+                              }}
+                            >
+                              {pick(item.name, lang)} <NgBadge tier={item.ngTier} />
+                            </Link>
                           </b>
                           {item.set && <small>{pick(item.set, lang)}</small>}
                         </span>
@@ -202,24 +243,22 @@ export function ItemsPage({
             </table>
           </div>
         )}
-        <Pagination page={currentPage} pages={pages} setPage={setCurrentPage} lang={lang} />
+        <Pagination
+          page={currentPage}
+          pages={pages}
+          setPage={setCurrentPage}
+          lang={lang}
+          disabled={!dataReady}
+        />
       </div>
       {selected && (
         <EquipmentDrawer
+          key={selected.id}
           item={selected}
-          variants={
-            selected.ngVariantOf
-              ? items.filter((item) => item.ngVariantOf === selected.ngVariantOf)
-              : items.filter(
-                  (item) =>
-                    !item.ngVariantOf &&
-                    item.name.en === selected.name.en &&
-                    item.subtype === selected.subtype,
-                )
-          }
+          variants={selectedVariants}
           classes={classes}
           lang={lang}
-          onClose={() => setSelected(null)}
+          onClose={onClose}
           onGamble={onGamble}
         />
       )}
@@ -232,23 +271,25 @@ function Pagination({
   pages,
   setPage,
   lang,
+  disabled,
 }: {
   page: number
   pages: number
   setPage: (page: number) => void
   lang: Lang
+  disabled: boolean
 }) {
   if (pages <= 1) return null
   return (
     <div className="pagination">
-      <button disabled={page <= 1} onClick={() => setPage(page - 1)}>
+      <button disabled={disabled || page <= 1} onClick={() => setPage(page - 1)}>
         <ChevronLeft size={15} />
         {copy(lang, '上一页', 'Previous', '上一頁')}
       </button>
       <span>
         {page} / {pages}
       </span>
-      <button disabled={page >= pages} onClick={() => setPage(page + 1)}>
+      <button disabled={disabled || page >= pages} onClick={() => setPage(page + 1)}>
         {copy(lang, '下一页', 'Next', '下一頁')}
         <ChevronRight size={15} />
       </button>

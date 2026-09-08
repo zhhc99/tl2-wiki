@@ -14,6 +14,7 @@ interface SelectControlProps {
   onChange: (value: string) => void
   className?: string
   icon?: ReactNode
+  disabled?: boolean
 }
 
 export function SelectControl({
@@ -23,6 +24,7 @@ export function SelectControl({
   onChange,
   className = '',
   icon,
+  disabled = false,
 }: SelectControlProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -143,6 +145,7 @@ export function SelectControl({
         aria-expanded={open}
         aria-controls={listboxId}
         aria-activedescendant={open ? `${listboxId}-option-${activeIndex}` : undefined}
+        disabled={disabled}
         onClick={() => (open ? setOpen(false) : openMenu())}
         onKeyDown={onKeyDown}
       >

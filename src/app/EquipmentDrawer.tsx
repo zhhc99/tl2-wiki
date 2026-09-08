@@ -32,6 +32,147 @@ export function EquipmentDrawer({
     Boolean(current.classRequirement)
   const gambleType = gambleTypeForEquipment(current.category, current.subtype)
   const canGamble = canGambleEquipment(current)
+  const details = (
+    <aside className="detail-drawer">
+      <button className="drawer-close" onClick={onClose} aria-label={tr(lang, 'close')}>
+        <X />
+      </button>
+      <div className="drawer-title">
+        <img className={`rarity-border ${current.rarity}`} src={asset(current.iconPath)} alt="" />
+        <div>
+          <div className="item-badges">
+            <span className={`rarity ${current.rarity}`}>{rarityName(current.rarity, lang)}</span>
+            {current.set && <span className="set-tag">{copy(lang, '套装', 'Set', '套裝')}</span>}
+          </div>
+          <h2>
+            {pick(current.name, lang)} <NgBadge tier={current.ngTier} />
+          </h2>
+          {originalName(current.name, lang) && (
+            <small className="original-name">{current.name.en}</small>
+          )}
+          <p className="item-level-type">
+            Lv.{current.level} {subtypeName(current.subtype, lang)}
+          </p>
+        </div>
+      </div>
+      {variants.length > 1 && (
+        <div className="variant-field">
+          <span>{copy(lang, '选择变体', 'Choose variant', '選擇變體')}</span>
+          <SelectControl
+            className="variant-select"
+            label={copy(lang, '选择变体', 'Choose variant', '選擇變體')}
+            value={currentId}
+            onChange={setCurrentId}
+            options={[...variants]
+              .sort((a, b) => a.level - b.level)
+              .map((variant) => ({
+                value: variant.id,
+                label: `${ngLabel(variant.ngTier) ? `${ngLabel(variant.ngTier)} · ` : ''}Lv ${variant.level} · ${rarityName(variant.rarity, lang)}`,
+              }))}
+          />
+        </div>
+      )}
+      {gambleType && (
+        <button
+          className="detail-gamble-link"
+          disabled={!canGamble}
+          onClick={() => onGamble(current)}
+        >
+          <CircleDollarSign size={21} />
+          <span>
+            <b>
+              {canGamble
+                ? copy(lang, '计算赌博价格', 'Calculate gambling price', '計算賭博價格')
+                : copy(lang, '无法通过赌博获得', 'Unavailable for gambling', '無法透過賭博取得')}
+            </b>
+            <small>
+              {canGamble
+                ? copy(
+                    lang,
+                    '带入类型、物品等级和原有孔数',
+                    'Use its type, item level, and original socket count',
+                    '帶入類型、物品等級與原有孔數',
+                  )
+                : copy(lang, '只能从掉落中获得', 'Only obtainable as a drop', '只能透過掉落取得')}
+            </small>
+          </span>
+          {canGamble && <ArrowRight size={17} />}
+        </button>
+      )}
+      {current.description && <blockquote>{pick(current.description, lang)}</blockquote>}
+      {hasRequirements && (
+        <DetailSection title={copy(lang, '装备需求', 'Requirements', '裝備需求')}>
+          <div className="requirement-options">
+            {current.requiredLevel > 0 && (
+              <strong className="requirement-level">Lv.{current.requiredLevel}</strong>
+            )}
+            {current.requiredLevel > 0 && current.requirements.length > 0 && (
+              <span className="requirement-or">{copy(lang, '或', 'Or', '或')}</span>
+            )}
+            {current.requirements.length > 0 && (
+              <div className="requirement-row">
+                {current.requirements.map((requirement, index) => (
+                  <span key={`${requirement.stat}-${index}`}>
+                    {index > 0 && <em>{copy(lang, '且', 'and', '且')}</em>}
+                    <StatPill stat={requirement.stat} />
+                    <b>{requirement.value}</b>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          {current.classRequirement && (
+            <p className="requirement-class">
+              <strong>{copy(lang, '职业：', 'Class:', '職業：')}</strong>
+              {classRequirementName(current.classRequirement, classes, lang)}
+            </p>
+          )}
+        </DetailSection>
+      )}
+      <EquipmentBaseValues item={current} lang={lang} />
+      {current.effects.length > 0 && (
+        <DetailSection title={copy(lang, '物品效果', 'Item effects', '裝備效果')}>
+          <ul className="display-effect-list">
+            {current.effects.map((effect, index) => (
+              <EffectLine key={`${effect.type}-${index}`} effect={effect} lang={lang} />
+            ))}
+          </ul>
+        </DetailSection>
+      )}
+      {current.set && (
+        <DetailSection title={copy(lang, '套装', 'Set', '套裝')}>
+          <p>{pick(current.set, lang)}</p>
+          {current.setBonuses.length > 0 && (
+            <ul className="display-effect-list">
+              {current.setBonuses.map((bonus, index) => (
+                <EffectLine
+                  key={`${bonus.pieces}-${bonus.type}-${index}`}
+                  effect={bonus}
+                  lang={lang}
+                  pieces={bonus.pieces}
+                />
+              ))}
+            </ul>
+          )}
+        </DetailSection>
+      )}
+      <DetailSection title={copy(lang, '其他数值', 'Other values', '其他數值')}>
+        {(current.minimumDropLevel != null || current.maximumDropLevel != null) && (
+          <p>
+            {copy(lang, '掉落等级', 'Drop level', '掉落等級')}:{' '}
+            {current.minimumDropLevel != null && current.maximumDropLevel != null
+              ? `${current.minimumDropLevel}–${current.maximumDropLevel}`
+              : current.minimumDropLevel != null
+                ? `${current.minimumDropLevel}+`
+                : `≤ ${current.maximumDropLevel}`}
+          </p>
+        )}
+        <p>SOCKETS: {current.sockets}</p>
+        {current.rarityValue != null && <p>RARITY: {current.rarityValue}</p>}
+        <p>VALUE: {current.value}</p>
+      </DetailSection>
+    </aside>
+  )
   return (
     <div
       className="drawer-backdrop"
@@ -39,145 +180,7 @@ export function EquipmentDrawer({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <aside className="detail-drawer">
-        <button className="drawer-close" onClick={onClose} aria-label={tr(lang, 'close')}>
-          <X />
-        </button>
-        <div className="drawer-title">
-          <img className={`rarity-border ${current.rarity}`} src={asset(current.iconPath)} alt="" />
-          <div>
-            <div className="item-badges">
-              <span className={`rarity ${current.rarity}`}>{rarityName(current.rarity, lang)}</span>
-              {current.set && <span className="set-tag">{copy(lang, '套装', 'Set', '套裝')}</span>}
-            </div>
-            <h2>
-              {pick(current.name, lang)} <NgBadge tier={current.ngTier} />
-            </h2>
-            {originalName(current.name, lang) && (
-              <small className="original-name">{current.name.en}</small>
-            )}
-            <p className="item-level-type">
-              Lv.{current.level} {subtypeName(current.subtype, lang)}
-            </p>
-          </div>
-        </div>
-        {variants.length > 1 && (
-          <div className="variant-field">
-            <span>{copy(lang, '选择变体', 'Choose variant', '選擇變體')}</span>
-            <SelectControl
-              className="variant-select"
-              label={copy(lang, '选择变体', 'Choose variant', '選擇變體')}
-              value={currentId}
-              onChange={setCurrentId}
-              options={[...variants]
-                .sort((a, b) => a.level - b.level)
-                .map((variant) => ({
-                  value: variant.id,
-                  label: `${ngLabel(variant.ngTier) ? `${ngLabel(variant.ngTier)} · ` : ''}Lv ${variant.level} · ${rarityName(variant.rarity, lang)}`,
-                }))}
-            />
-          </div>
-        )}
-        {gambleType && (
-          <button
-            className="detail-gamble-link"
-            disabled={!canGamble}
-            onClick={() => onGamble(current)}
-          >
-            <CircleDollarSign size={21} />
-            <span>
-              <b>
-                {canGamble
-                  ? copy(lang, '计算赌博价格', 'Calculate gambling price', '計算賭博價格')
-                  : copy(lang, '无法通过赌博获得', 'Unavailable for gambling', '無法透過賭博取得')}
-              </b>
-              <small>
-                {canGamble
-                  ? copy(
-                      lang,
-                      '带入类型、物品等级和原有孔数',
-                      'Use its type, item level, and original socket count',
-                      '帶入類型、物品等級與原有孔數',
-                    )
-                  : copy(lang, '只能从掉落中获得', 'Only obtainable as a drop', '只能透過掉落取得')}
-              </small>
-            </span>
-            {canGamble && <ArrowRight size={17} />}
-          </button>
-        )}
-        {current.description && <blockquote>{pick(current.description, lang)}</blockquote>}
-        {hasRequirements && (
-          <DetailSection title={copy(lang, '装备需求', 'Requirements', '裝備需求')}>
-            <div className="requirement-options">
-              {current.requiredLevel > 0 && (
-                <strong className="requirement-level">Lv.{current.requiredLevel}</strong>
-              )}
-              {current.requiredLevel > 0 && current.requirements.length > 0 && (
-                <span className="requirement-or">{copy(lang, '或', 'Or', '或')}</span>
-              )}
-              {current.requirements.length > 0 && (
-                <div className="requirement-row">
-                  {current.requirements.map((requirement, index) => (
-                    <span key={`${requirement.stat}-${index}`}>
-                      {index > 0 && <em>{copy(lang, '且', 'and', '且')}</em>}
-                      <StatPill stat={requirement.stat} />
-                      <b>{requirement.value}</b>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            {current.classRequirement && (
-              <p className="requirement-class">
-                <strong>{copy(lang, '职业：', 'Class:', '職業：')}</strong>
-                {classRequirementName(current.classRequirement, classes, lang)}
-              </p>
-            )}
-          </DetailSection>
-        )}
-        <EquipmentBaseValues item={current} lang={lang} />
-        {current.effects.length > 0 && (
-          <DetailSection title={copy(lang, '物品效果', 'Item effects', '裝備效果')}>
-            <ul className="display-effect-list">
-              {current.effects.map((effect, index) => (
-                <EffectLine key={`${effect.type}-${index}`} effect={effect} lang={lang} />
-              ))}
-            </ul>
-          </DetailSection>
-        )}
-        {current.set && (
-          <DetailSection title={copy(lang, '套装', 'Set', '套裝')}>
-            <p>{pick(current.set, lang)}</p>
-            {current.setBonuses.length > 0 && (
-              <ul className="display-effect-list">
-                {current.setBonuses.map((bonus, index) => (
-                  <EffectLine
-                    key={`${bonus.pieces}-${bonus.type}-${index}`}
-                    effect={bonus}
-                    lang={lang}
-                    pieces={bonus.pieces}
-                  />
-                ))}
-              </ul>
-            )}
-          </DetailSection>
-        )}
-        <DetailSection title={copy(lang, '其他数值', 'Other values', '其他數值')}>
-          {(current.minimumDropLevel != null || current.maximumDropLevel != null) && (
-            <p>
-              {copy(lang, '掉落等级', 'Drop level', '掉落等級')}:{' '}
-              {current.minimumDropLevel != null && current.maximumDropLevel != null
-                ? `${current.minimumDropLevel}–${current.maximumDropLevel}`
-                : current.minimumDropLevel != null
-                  ? `${current.minimumDropLevel}+`
-                  : `≤ ${current.maximumDropLevel}`}
-            </p>
-          )}
-          <p>SOCKETS: {current.sockets}</p>
-          {current.rarityValue != null && <p>RARITY: {current.rarityValue}</p>}
-          <p>VALUE: {current.value}</p>
-        </DetailSection>
-      </aside>
+      {details}
     </div>
   )
 }

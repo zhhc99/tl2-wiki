@@ -20,7 +20,6 @@ import {
 
 export interface BuildWorkspaceProps {
   lang: Lang
-  itemsReady: boolean
   classes: DbClass[]
   classId: string
   level: number
@@ -42,7 +41,6 @@ export interface BuildWorkspaceProps {
 
 export function BuildWorkspace({
   lang,
-  itemsReady,
   classes,
   classId,
   level,
@@ -76,7 +74,7 @@ export function BuildWorkspace({
           <NumberInput min={1} max={100} value={level} onChange={onLevelChange} />
         </label>
         <div className="build-transfer-actions">
-          <button className="import-build" disabled={!itemsReady} onClick={onOpenImport}>
+          <button className="import-build" onClick={onOpenImport}>
             <ClipboardPaste size={16} />
             {copy(lang, '导入', 'Import', '匯入')}
           </button>

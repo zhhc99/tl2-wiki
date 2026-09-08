@@ -1,14 +1,15 @@
 import { Globe2, Menu, Search, X } from 'lucide-react'
+import { Link } from 'react-router'
 import { localeOptions, tr, type UIKey } from '../i18n'
 import { SelectControl } from '../SelectControl'
 import type { Lang } from '../types'
-import type { Navigate, Page } from './navigation'
+import type { Page } from './navigation'
 
 export function Header({
   lang,
   setLang,
   page,
-  go,
+  href,
   mobileOpen,
   setMobileOpen,
   onSearch,
@@ -16,7 +17,7 @@ export function Header({
   lang: Lang
   setLang: (lang: Lang) => void
   page: Page
-  go: Navigate
+  href: (page: Page) => string
   mobileOpen: boolean
   setMobileOpen: (open: boolean) => void
   onSearch: () => void
@@ -34,19 +35,20 @@ export function Header({
   return (
     <header className="site-header">
       <div className="nav-wrap">
-        <button className="brand" onClick={() => go('home')}>
+        <Link className="brand" to={href('home')} onClick={() => setMobileOpen(false)}>
           <span className="brand-dot" />
           <b>TL2 Wiki</b>
-        </button>
+        </Link>
         <nav className={mobileOpen ? 'main-nav is-open' : 'main-nav'}>
           {nav.map((item) => (
-            <button
+            <Link
               key={item.page}
               className={page === item.page ? 'active' : ''}
-              onClick={() => go(item.page)}
+              to={href(item.page)}
+              onClick={() => setMobileOpen(false)}
             >
               {tr(lang, item.label)}
-            </button>
+            </Link>
           ))}
         </nav>
         <div className="header-tools">
@@ -76,19 +78,19 @@ export function Header({
   )
 }
 
-export function Footer({ lang, go }: { lang: Lang; go: Navigate }) {
+export function Footer({ lang, href }: { lang: Lang; href: (page: Page) => string }) {
   return (
     <footer className="site-footer">
       <div className="content">
         <b>TL2 Wiki</b>
         <nav>
-          <button onClick={() => go('classes')}>{tr(lang, 'navClasses')}</button>
-          <button onClick={() => go('items')}>{tr(lang, 'navItems')}</button>
-          <button onClick={() => go('builds')}>{tr(lang, 'navBuilds')}</button>
-          <button onClick={() => go('gambling')}>{tr(lang, 'navGambling')}</button>
-          <button onClick={() => go('spells')}>{tr(lang, 'navSpells')}</button>
-          <button onClick={() => go('mechanics')}>{tr(lang, 'navMechanics')}</button>
-          <button onClick={() => go('phases')}>{tr(lang, 'navPhases')}</button>
+          {(
+            ['classes', 'items', 'builds', 'gambling', 'spells', 'mechanics', 'phases'] as Page[]
+          ).map((page) => (
+            <Link key={page} to={href(page)}>
+              {tr(lang, `nav${page[0].toUpperCase()}${page.slice(1)}` as UIKey)}
+            </Link>
+          ))}
         </nav>
       </div>
     </footer>

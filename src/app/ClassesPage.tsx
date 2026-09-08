@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
+import { Link } from 'react-router'
 import { classPresentation } from '../data'
 import {
   asset,
+  type ClassSkillSummary,
   type DbClass,
   type DbClassSkill,
   type DbSkillRank,
@@ -11,52 +13,43 @@ import {
 import { copy, pick, tr } from '../i18n'
 import { NumberInput } from '../NumberInput'
 import type { Lang } from '../types'
-import type { SkillFocus } from './navigation'
 import { EffectLine, graphValue } from './EffectLine'
-import { Loading, originalName, PageHeader, SectionTitle } from '../WikiUi'
+import { originalName, PageHeader, SectionTitle } from '../WikiUi'
 
 export function ClassesPage({
   lang,
   classId,
-  setClassId,
   classes,
-  classSkills,
+  skills,
+  selectedSkill,
   skillGraphs,
-  focus,
+  skillHref,
+  classHref,
 }: {
   lang: Lang
   classId: string
-  setClassId: (id: string) => void
   classes: DbClass[]
-  classSkills: DbClassSkill[]
+  skills: ClassSkillSummary[]
+  selectedSkill: DbClassSkill
   skillGraphs: SkillGraphs
-  focus: SkillFocus | null
+  skillHref: (skill: ClassSkillSummary) => string
+  classHref: (classId: string) => string
 }) {
   const hero = classes.find((item) => item.id === classId) ?? classes[0]
   const trees = hero.trees.map((tree) => ({
     ...tree,
-    skills: classSkills.filter((skill) => skill.classId === hero.id && skill.treeId === tree.id),
+    skills: skills.filter((skill) => skill.classId === hero.id && skill.treeId === tree.id),
   }))
-  const [treeId, setTreeId] = useState(trees[0].id)
-  const tree = trees.find((item) => item.id === treeId) ?? trees[0]
-  const [selectedId, setSelectedId] = useState('')
-  useEffect(() => {
-    setTreeId(trees[0].id)
-    setSelectedId('')
-  }, [hero.id])
-  useEffect(() => {
-    if (focus?.classId !== hero.id) return
-    const targetTree = trees.find((item) => item.skills.some((skill) => skill.id === focus.skillId))
-    if (targetTree) {
-      setTreeId(targetTree.id)
-      setSelectedId(focus.skillId)
-    }
-  }, [focus, hero.id, classSkills])
-  useEffect(() => {
-    if (tree.skills.length && !tree.skills.some((skill) => skill.id === selectedId))
-      setSelectedId(tree.skills[0].id)
-  }, [tree, selectedId])
-  const selected = tree.skills.find((skill) => skill.id === selectedId) ?? tree.skills[0]
+  const tree = trees.find((item) => item.id === selectedSkill.treeId) ?? trees[0]
+  const preservedScroll = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    if (preservedScroll.current === null) return
+    window.scrollTo(0, preservedScroll.current)
+    preservedScroll.current = null
+  }, [selectedSkill.id])
+  const preserveScroll = () => {
+    preservedScroll.current = window.scrollY
+  }
   return (
     <>
       <PageHeader section={tr(lang, 'navClasses')} title={tr(lang, 'classesTitle')}>
@@ -70,16 +63,17 @@ export function ClassesPage({
       <div className="content page-body">
         <div className="segmented class-tabs">
           {classes.map((item) => (
-            <button
+            <Link
               key={item.id}
               className={item.id === hero.id ? 'active' : ''}
-              onClick={() => setClassId(item.id)}
+              to={classHref(item.id)}
+              preventScrollReset
             >
               <span style={{ color: classPresentation[item.id].accent }}>
                 {classPresentation[item.id].monogram}
               </span>
               {pick(item.name, lang)}
-            </button>
+            </Link>
           ))}
         </div>
         <section className="class-overview">
@@ -89,54 +83,59 @@ export function ClassesPage({
             <p>{pick(hero.description, lang)}</p>
           </div>
         </section>
-        {!selected ? (
-          <Loading lang={lang} />
-        ) : (
-          <div className="skill-layout">
-            <section>
-              <div className="section-row">
-                <SectionTitle eyebrow={tr(lang, 'skillTrees')} title={pick(tree.name, lang)} />
-                <div className="segmented tree-tabs">
-                  {trees.map((item) => (
-                    <button
-                      className={item.id === tree.id ? 'active' : ''}
-                      onClick={() => setTreeId(item.id)}
-                      key={item.id}
-                    >
-                      {pick(item.name, lang)} <small>{item.skills.length}</small>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="skill-table">
-                {tree.skills.map((skill) => (
-                  <button
-                    key={skill.id}
-                    className={selected.id === skill.id ? 'active' : ''}
-                    onClick={() => setSelectedId(skill.id)}
+        <div className="skill-layout">
+          <section>
+            <div className="section-row">
+              <SectionTitle eyebrow={tr(lang, 'skillTrees')} title={pick(tree.name, lang)} />
+              <div className="segmented tree-tabs">
+                {trees.map((item) => (
+                  <Link
+                    className={item.id === tree.id ? 'active' : ''}
+                    to={skillHref(item.skills[0]!)}
+                    key={item.id}
+                    preventScrollReset
+                    onClick={preserveScroll}
                   >
-                    <img src={asset(skill.iconPath)} alt="" />
-                    <span>
-                      <b>{pick(skill.name, lang)}</b>
-                      <small>
-                        {skill.kind === 'active' ? tr(lang, 'active') : tr(lang, 'passive')} ·{' '}
-                        {tr(lang, 'unlocks')} {skill.level}
-                      </small>
-                    </span>
-                    <ChevronRight size={15} />
-                  </button>
+                    {pick(item.name, lang)} <small>{item.skills.length}</small>
+                  </Link>
                 ))}
               </div>
-            </section>
-            <SkillPanel key={selected.id} skill={selected} lang={lang} skillGraphs={skillGraphs} />
-          </div>
-        )}
+            </div>
+            <div className="skill-table">
+              {tree.skills.map((skill) => (
+                <Link
+                  key={skill.id}
+                  className={selectedSkill.id === skill.id ? 'active' : ''}
+                  to={skillHref(skill)}
+                  preventScrollReset
+                  onClick={preserveScroll}
+                >
+                  <img src={asset(skill.iconPath)} alt="" />
+                  <span>
+                    <b>{pick(skill.name, lang)}</b>
+                    <small>
+                      {skill.kind === 'active' ? tr(lang, 'active') : tr(lang, 'passive')} ·{' '}
+                      {tr(lang, 'unlocks')} {skill.level}
+                    </small>
+                  </span>
+                  <ChevronRight size={15} />
+                </Link>
+              ))}
+            </div>
+          </section>
+          <SkillPanel
+            key={selectedSkill.id}
+            skill={selectedSkill}
+            lang={lang}
+            skillGraphs={skillGraphs}
+          />
+        </div>
       </div>
     </>
   )
 }
 
-function SkillPanel({
+export function SkillPanel({
   skill,
   lang,
   skillGraphs,

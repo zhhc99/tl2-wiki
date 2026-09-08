@@ -12,7 +12,7 @@ const iconOutputDir = resolve(projectDir, 'public/game-icons')
 const metadata = Object.fromEntries(
   query('SELECT key,value FROM metadata').map((row) => [row.key, row.value]),
 )
-if (metadata.schema_version !== '3')
+if (metadata.schema_version !== '4')
   throw new Error(`Unsupported tl2-db schema: ${metadata.schema_version}`)
 
 const clean = (value) => String(value ?? '').trim()
@@ -100,9 +100,6 @@ const category = (value) =>
 const equipmentRows = query(`
   SELECT * FROM wiki_equipment ORDER BY level DESC,name_en,record_id
 `)
-const variantRoots = new Set(
-  equipmentRows.filter((row) => row.variant_of).map((row) => row.variant_of),
-)
 const equipment = equipmentRows.map((row) => {
   const set = row.set_name ? sets.get(clean(row.set_name).toLowerCase()) : null
   const effects = (equipmentEffects.get(row.record_id) || []).map((effect) =>
@@ -115,6 +112,7 @@ const equipment = equipmentRows.map((row) => {
   )
   return {
     id: row.record_id,
+    familyId: row.family_id,
     name: local(row, 'name'),
     category: category(row.category),
     subtype: row.subtype,
@@ -149,7 +147,6 @@ const equipment = equipmentRows.map((row) => {
       ...displayEffect(effect),
     })),
     ngTier: row.ng_tier,
-    ngVariantOf: row.variant_of || (variantRoots.has(row.record_id) ? row.record_id : null),
   }
 })
 

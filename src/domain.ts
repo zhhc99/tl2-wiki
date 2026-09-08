@@ -31,34 +31,41 @@ export interface SetBonus extends DisplayEffect {
   pieces: number
 }
 
-export interface DbEquipment {
+export interface EquipmentSummary {
   id: string
+  familyId: string
   name: LocalText
   category: ItemCategory
   subtype: string
   rarity: Rarity
-  rarityValue: number | null
   value: number
   level: number
+  sockets: number
+  classRequirement: string | null
+  set: LocalText | null
+  iconPath: string | null
+  ngTier: number
+}
+
+export interface EquipmentIndexEntry extends EquipmentSummary {
+  searchText: string
+}
+
+export interface DbEquipment extends EquipmentSummary {
+  rarityValue: number | null
   requiredLevel: number
   requirements: { stat: Exclude<StatKey, 'none'>; value: number }[]
-  sockets: number
   speed: number | null
   damagePerSecond: [number, number] | null
   blockChance: number | null
   minimumDropLevel: number | null
   maximumDropLevel: number | null
-  classRequirement: string | null
-  set: LocalText | null
   setInternalName: string | null
   description: LocalText | null
-  iconPath: string | null
   armor: Record<string, [number, number]>
   damage: Record<string, [number, number]>
   effects: DisplayEffect[]
   setBonuses: SetBonus[]
-  ngTier: number
-  ngVariantOf: string | null
 }
 
 export interface DbSpellBook {
@@ -109,6 +116,46 @@ export interface DbClassSkill {
   ranks: DbSkillRank[]
 }
 
+export type ClassSkillSummary = Pick<
+  DbClassSkill,
+  'id' | 'classId' | 'treeId' | 'name' | 'kind' | 'level' | 'iconPath'
+>
+
+interface SearchIndexBase {
+  id: string
+  name: LocalText
+  searchText: string
+}
+
+export type SearchClassEntry = SearchIndexBase & { type: 'class' }
+export type SearchSkillEntry = SearchIndexBase & {
+  type: 'skill'
+  image: string | null
+  classId: string
+  className: LocalText
+  skillKind: SkillKind
+}
+export type SearchItemEntry = SearchIndexBase & {
+  type: 'item'
+  image: string | null
+  familyId: string
+  subtype: string
+  level: number
+  ngTier: number
+}
+export type SearchSpellEntry = SearchIndexBase & {
+  type: 'spell'
+  image: string | null
+  family: LocalText
+}
+export type SearchPhaseEntry = SearchIndexBase & { type: 'phase'; rooms: number }
+export type SearchIndexEntry =
+  | SearchClassEntry
+  | SearchSkillEntry
+  | SearchItemEntry
+  | SearchSpellEntry
+  | SearchPhaseEntry
+
 export interface DbPhaseChallenge {
   id: string
   name: LocalText
@@ -155,3 +202,7 @@ export interface SiteData {
 export const asset = (path: string | null) => (path ? `${import.meta.env.BASE_URL}${path}` : '')
 export const allText = (value: LocalText) => `${value.en} ${value.zhCN} ${value.zhTW}`
 export const ngLabel = (tier: number) => (tier === 1 ? 'NG+' : tier > 1 ? `NG+${tier}` : null)
+export const equipmentFamily = (items: DbEquipment[], familyId: string) =>
+  items
+    .filter((item) => item.familyId === familyId)
+    .sort((a, b) => a.level - b.level || a.id.localeCompare(b.id))

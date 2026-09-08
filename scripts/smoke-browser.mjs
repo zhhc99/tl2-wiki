@@ -1,22 +1,24 @@
 const endpoint = process.argv[2] || 'http://127.0.0.1:9222'
-const siteUrl = process.argv[3] || 'http://127.0.0.1:5173'
+const siteUrl = process.argv[3] || 'http://127.0.0.1:4173/tl2-wiki'
 const targets = await fetch(`${endpoint}/json`).then((response) => response.json())
-const target = targets.find((item) => item.type === 'page' && item.url.startsWith(siteUrl))
-if (!target) throw new Error('TL2 Wiki page target not found')
+const target = targets.find((item) => item.type === 'page')
+if (!target) throw new Error('Browser page target not found')
 
 const socket = new WebSocket(target.webSocketDebuggerUrl)
 await new Promise((resolve, reject) => {
   socket.onopen = resolve
   socket.onerror = reject
 })
+
 let id = 0
 const pending = new Map()
+const requestUrls = []
 socket.onmessage = (event) => {
   const message = JSON.parse(event.data)
-  if (message.id && pending.has(message.id)) {
-    pending.get(message.id)(message)
-    pending.delete(message.id)
-  }
+  if (message.method === 'Network.requestWillBeSent') requestUrls.push(message.params.request.url)
+  if (!message.id || !pending.has(message.id)) return
+  pending.get(message.id)(message)
+  pending.delete(message.id)
 }
 const call = (method, params = {}) =>
   new Promise((resolve) => {
@@ -24,571 +26,184 @@ const call = (method, params = {}) =>
     pending.set(requestId, resolve)
     socket.send(JSON.stringify({ id: requestId, method, params }))
   })
+await call('Network.enable')
 const evaluate = async (expression) =>
   (await call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result
     .result.value
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-await call('Emulation.clearDeviceMetricsOverride')
-const chooseOption = async (selector, value) => {
-  await evaluate(
-    `document.querySelector(${JSON.stringify(selector)})?.querySelector('.select-trigger')?.click()`,
+const waitFor = async (expression) => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (await evaluate(expression)) return
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error(`Timed out: ${expression}`)
+}
+const visit = async (path) => {
+  const url = `${siteUrl}${path}`
+  await call('Page.navigate', { url })
+  await waitFor(
+    `location.href === ${JSON.stringify(url)} && document.readyState === 'complete' && Boolean(document.querySelector('main'))`,
   )
-  await wait(60)
-  await evaluate(
-    `(() => { const root=document.querySelector(${JSON.stringify(selector)}); [...(root?.querySelectorAll('.select-option')||[])].find(option=>option.dataset.value===${JSON.stringify(value)})?.click(); })()`,
+  await waitFor(
+    `Object.keys(document.querySelector('main')).some((key) => key.startsWith('__reactProps'))`,
   )
-  await wait(80)
+}
+const fullEquipmentRequests = () =>
+  requestUrls.filter((url) => new URL(url).pathname.endsWith('/data/equipment.json')).length
+
+await visit('/')
+if (!(await evaluate(`document.body.textContent.includes('4,029')`)))
+  throw new Error('English home page did not hydrate')
+
+await visit('/items/nargothrels-band/')
+if (fullEquipmentRequests() !== 0)
+  throw new Error('Direct equipment route requested the full equipment data on initial load')
+if (
+  !(await evaluate(
+    `document.querySelector('.detail-drawer h2').textContent.includes("Nargothrel's Band") && document.querySelector('.data-table') && document.querySelectorAll('link[rel="alternate"]').length === 4`,
+  ))
+)
+  throw new Error('Direct equipment route does not render the equipment drawer or SEO links')
+
+await visit('/classes/outlander/')
+if (
+  !(await evaluate(
+    `document.querySelector('.skill-panel h2').textContent === 'Rapid Fire' && document.querySelector('.skill-table a[href$="/rune-vault/"]') instanceof HTMLAnchorElement`,
+  ))
+)
+  throw new Error('Class route does not render its first skill')
+if (
+  !(await evaluate(
+    `(() => { const style = getComputedStyle(document.querySelector('.tree-tabs a')); return style.display.endsWith('flex') && style.alignItems === 'center' && style.justifyContent === 'center' })()`,
+  ))
+)
+  throw new Error('Skill tree links are not centered like the original buttons')
+await evaluate(
+  `document.documentElement.style.scrollBehavior = 'auto'; scrollTo(0, 600); window.__softNavigationMarker = true; window.__scrollMarker = scrollY`,
+)
+await evaluate(`document.querySelector('.skill-table a[href$="/rune-vault/"]').click()`)
+await waitFor(
+  `location.pathname.endsWith('/classes/outlander/skills/rune-vault/') && document.querySelector('.skill-panel h2').textContent === 'Rune Vault' && document.querySelector('link[rel="canonical"]').href.endsWith('/classes/outlander/skills/rune-vault/')`,
+)
+if (!(await evaluate(`window.__softNavigationMarker === true`)))
+  throw new Error('Skill selection caused a document navigation')
+if (!(await evaluate(`scrollY === window.__scrollMarker`)))
+  throw new Error('Skill selection reset the scroll position')
+await evaluate(`document.querySelector('.tree-tabs a[href$="/glaive-throw/"]').click()`)
+await waitFor(
+  `location.pathname.endsWith('/classes/outlander/skills/glaive-throw/') && document.querySelector('.skill-panel h2').textContent === 'Glaive Throw'`,
+)
+if (!(await evaluate(`scrollY === window.__scrollMarker`))) {
+  const scrollState = await evaluate(
+    `({ before: window.__scrollMarker, after: scrollY, maximum: document.documentElement.scrollHeight - innerHeight })`,
+  )
+  throw new Error(`Skill tree selection reset the scroll position: ${JSON.stringify(scrollState)}`)
 }
 
-await evaluate(`location.hash='#/home'; location.reload()`)
-await wait(500)
-const loaded = await evaluate(`document.body.textContent.includes('4,029')`)
-if (!loaded) throw new Error('Equipment count was not rendered')
-const homeCards = await evaluate(`(() => {
-  const cards=[...document.querySelectorAll('.quick-grid > button')];
-  const pill=document.querySelector('.attribute-list .stat-pill');
-  return cards.length===4 && cards.every(card=>card.querySelector(':scope > .quick-meta > svg') && !card.querySelector(':scope > svg'))
-    && getComputedStyle(pill).height==='28px' && getComputedStyle(pill).width==='52px';
-})()`)
-if (!homeCards) throw new Error('Home card arrows or attribute pills are misaligned')
-const before = await evaluate(`Boolean(document.querySelector('.search-modal'))`)
-if (before) throw new Error('Search modal unexpectedly open before keyboard test')
+await visit('/items/')
+await waitFor(
+  `[...document.querySelectorAll('tbody a')].some((link) => link.textContent.includes('Ascendant Belt'))`,
+)
 await evaluate(
-  `window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',code:'KeyK',ctrlKey:true,bubbles:true}))`,
+  `document.documentElement.style.scrollBehavior = 'auto'; scrollTo(0, 500); window.__softNavigationMarker = true; window.__scrollMarker = scrollY`,
 )
-await wait(100)
-const after = await evaluate(
-  `Boolean(document.querySelector('.search-modal')) && document.activeElement?.tagName === 'INPUT'`,
-)
-if (!after) throw new Error('Ctrl+K did not open and focus global search')
 await evaluate(
-  `window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}))`,
+  `[...document.querySelectorAll('tbody a')].find((link) => link.textContent.includes('Ascendant Belt')).click()`,
 )
-await wait(100)
-const closed = await evaluate(`!document.querySelector('.search-modal')`)
-if (!closed) throw new Error('Escape did not close global search')
-await chooseOption('.locale-select', 'zh-TW')
-const language = await evaluate(`document.documentElement.lang`)
-if (language !== 'zh-TW')
-  throw new Error(`Traditional Chinese selection did not update document language: ${language}`)
-await evaluate(
-  `window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',code:'KeyK',ctrlKey:true,bubbles:true}))`,
+await waitFor(
+  `location.pathname.endsWith('/items/ascendant-belt/') && document.querySelector('.detail-drawer h2').textContent.includes('Ascendant Belt') && document.querySelector('link[rel="canonical"]').href.endsWith('/items/ascendant-belt/')`,
 )
-await wait(80)
-await evaluate(
-  `(() => { const input=document.querySelector('.search-input input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"Arcgap's Vice"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
+if (!(await evaluate(`window.__softNavigationMarker === true`)))
+  throw new Error('Equipment selection caused a document navigation')
+if (!(await evaluate(`scrollY === window.__scrollMarker`)))
+  throw new Error('Equipment selection reset the scroll position')
+await evaluate(`document.querySelector('.drawer-close').click()`)
+await waitFor(
+  `location.pathname.endsWith('/items/') && !document.querySelector('.drawer-backdrop')`,
 )
-await wait(120)
-const localizedSearchType = await evaluate(
-  `(() => { const labels=[...document.querySelectorAll('.search-list em')].map(node=>node.textContent.trim()); return labels.length>0 && labels.includes('裝備') && !labels.some(label=>['ITEM','CLASS','SKILL','SPELL','PHASE'].includes(label)); })()`,
-)
-if (!localizedSearchType) throw new Error('Global search result types were not localized')
-await evaluate(`document.querySelector('.search-list > button')?.click()`)
-await wait(150)
-const globalItemSearch = await evaluate(
-  `location.hash==='#/items' && document.querySelector('.data-search input')?.value.includes('弧光裂隙鉗') && document.querySelectorAll('.data-table tbody tr').length>0`,
-)
-if (!globalItemSearch)
-  throw new Error('Global equipment search did not populate and run the equipment-library search')
-await evaluate(
-  `window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',code:'KeyK',ctrlKey:true,bubbles:true}))`,
-)
-await wait(80)
-await evaluate(
-  `(() => { const input=document.querySelector('.search-input input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"Alchemist Ring of Blood NG+"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
-)
-await wait(150)
-const ngSearchResult = await evaluate(
-  `document.querySelector('.search-list > button')?.textContent.includes('NG+')`,
-)
-if (!ngSearchResult) throw new Error('Global search did not find an NG equipment variant')
-await evaluate(`document.querySelector('.search-list > button')?.click()`)
-await wait(150)
-const normalizedNgSearch = await evaluate(
-  `document.querySelector('.data-search input')?.value==='煉金術士的鮮血戒指'`,
-)
-if (!normalizedNgSearch)
-  throw new Error('Global search included the NG label in the equipment query')
+if (!(await evaluate(`scrollY === window.__scrollMarker`)))
+  throw new Error('Closing equipment reset the scroll position')
 
-await evaluate(`location.hash='#/classes'`)
-await wait(250)
-const classNavigation = await evaluate(
-  `(() => { const names=[...document.querySelectorAll('.class-tabs button')].map(button=>button.textContent.trim()); return names.join('|')==='BZ狂戰士|OL異域行者|EM燼法師|EN工程師'; })()`,
-)
-if (!classNavigation) throw new Error('Class tabs were not rendered in the database order')
-const defaultSkillTrees = await evaluate(
-  `(() => { const names=[...document.querySelectorAll('.tree-tabs button')].map(button=>button.textContent.trim()); return ['獵人','雪原','影子'].every(name=>names.some(value=>value.startsWith(name))); })()`,
-)
-if (!defaultSkillTrees) throw new Error('Database skill tree names were not rendered')
-const skillTreeSizes = []
-for (let index = 0; index < 3; index += 1) {
-  await evaluate(`document.querySelectorAll('.tree-tabs button')[${index}]?.click()`)
-  await wait(80)
-  skillTreeSizes.push(await evaluate(`document.querySelectorAll('.skill-table > button').length`))
-}
-if (skillTreeSizes.some((count) => count !== 10))
-  throw new Error('A database skill tree did not render 10 skills')
-const skillData = await evaluate(
-  `Boolean(document.querySelector('.skill-table img')?.complete && document.querySelector('.rank-control input')?.max==='15' && document.querySelector('.skill-metrics'))`,
-)
-if (!skillData) throw new Error('Skill icons or rank values were not rendered')
-const manaBefore = await evaluate(
-  `(() => { const row=[...document.querySelectorAll('.skill-metrics > div')].find(node=>node.querySelector('span')?.textContent.includes('法力消耗')); return row?.querySelector('b')?.textContent||null; })()`,
-)
-await evaluate(
-  `(() => { const input=document.querySelector('.skill-character-level input'); if(!input)return; const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,'100'); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
-)
-await wait(80)
-const manaAfter = await evaluate(
-  `(() => { const row=[...document.querySelectorAll('.skill-metrics > div')].find(node=>node.querySelector('span')?.textContent.includes('法力消耗')); return row?.querySelector('b')?.textContent||null; })()`,
-)
-if (!manaBefore || manaAfter !== manaBefore)
-  throw new Error('Skill mana cost changed with character level')
-
-await evaluate(`location.hash='#/items'`)
-await wait(250)
-const setSearch = (value) =>
-  evaluate(`(() => {
-  const input=document.querySelector('.data-search input');
-  const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
-  setter.call(input,${JSON.stringify(value)});
-  input.dispatchEvent(new Event('input',{bubbles:true}));
+await evaluate(`(() => {
+  const input = document.querySelector('.data-search input')
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Bitterbite')
+  input.dispatchEvent(new Event('input', { bubbles: true }))
 })()`)
-await setSearch('All Damage Taken is reduced by 3%')
-await wait(150)
-const effectSearchWorked = await evaluate(
-  `document.querySelectorAll('.data-table tbody tr').length > 0`,
+await waitFor(`document.querySelector('tbody a')?.textContent.includes('Bitterbite')`)
+await evaluate(`document.querySelector('tbody a').click()`)
+await waitFor(
+  `location.pathname.endsWith('/items/bitterbite/') && document.querySelector('.detail-drawer h2').textContent.includes('Bitterbite') && Boolean(document.querySelector('.variant-field'))`,
 )
-if (!effectSearchWorked) throw new Error('Equipment effect text was not searchable')
-const equipmentColumns = await evaluate(`document.querySelectorAll('.data-table thead th').length`)
-if (equipmentColumns !== 6)
-  throw new Error('Equipment table still exposes the removed socket column')
-await setSearch('The Eye of Winter Widow')
-await wait(150)
-const ngItemRows = await evaluate(
-  `(() => { const rows=[...document.querySelectorAll('.data-table tbody tr')]; return rows.length===4 && rows.filter(row=>row.querySelector('.ng-badge')).length===3 && ['NG+','NG+2','NG+3'].every(label=>rows.some(row=>row.textContent.includes(label))); })()`,
+await evaluate(`document.querySelector('.drawer-close').click()`)
+await waitFor(
+  `location.pathname.endsWith('/items/') && !document.querySelector('.drawer-backdrop')`,
 )
-if (!ngItemRows)
-  throw new Error(
-    'NG item variants or their name labels were not rendered as separate equipment rows',
-  )
-await setSearch('The Eye of Grell')
-await wait(150)
-const fixedNgItem = await evaluate(
-  `document.querySelectorAll('.data-table tbody tr').length===1 && !document.querySelector('.data-table tbody .ng-badge')`,
-)
-if (!fixedNgItem) throw new Error('Equipment with identical NG values was duplicated')
-await evaluate(`document.querySelector('.data-table tbody tr')?.click()`)
-await wait(100)
-const effectDetail = await evaluate(
-  `(() => { const drawer=document.querySelector('.detail-drawer'); return Boolean(document.querySelector('.display-effect-list')?.textContent.includes('爆擊率') && drawer?.textContent.includes('SOCKETS: 0') && drawer?.textContent.includes('RARITY: 0') && drawer?.textContent.includes('VALUE: 111') && !drawer?.textContent.includes('孔數: 0') && !drawer?.textContent.includes('稀有度: 獨特') && !document.querySelector('.detail-gamble-link')); })()`,
-)
-if (!effectDetail)
-  throw new Error(
-    'Localized effects, source SOCKETS/RARITY/VALUE metadata, or socketable gambling navigation is incorrect',
-  )
-await evaluate(`document.querySelector('.drawer-close')?.click()`)
-await setSearch("Arcgap's Vice")
-await wait(150)
-await evaluate(`document.querySelector('.data-table tbody tr')?.click()`)
-await wait(100)
-const weaponSpeed = await evaluate(
-  `document.querySelector('.item-base-values')?.textContent.includes('1,009 每秒傷害') && document.querySelector('.item-base-values')?.textContent.includes('0.8s 攻擊間隔')`,
-)
-if (!weaponSpeed) throw new Error('Weapon DPS or attack interval was not rendered')
-const level105LegendaryGamble = await evaluate(
-  `(() => { const link=document.querySelector('.detail-gamble-link'); return Boolean(link && !link.disabled && link.textContent.includes('計算賭博價格')); })()`,
-)
-if (!level105LegendaryGamble) throw new Error('Level 105 Legendary equipment was not gambleable')
-await evaluate(`document.querySelector('.drawer-close')?.click()`)
-await setSearch('Black Rose')
-await wait(150)
-await evaluate(`document.querySelector('.data-table tbody tr')?.click()`)
-await wait(100)
-const unavailableLegendaryGamble = await evaluate(
-  `(() => { const link=document.querySelector('.detail-gamble-link'); return Boolean(link?.disabled && link.textContent.includes('無法賭博') && link.textContent.includes('只能透過掉落取得') && !link.querySelector('svg:last-child')); })()`,
-)
-if (!unavailableLegendaryGamble)
-  throw new Error('Non-level-105 Legendary equipment did not show the localized unavailable state')
-await evaluate(`document.querySelector('.drawer-close')?.click()`)
-await setSearch('Decisive Sanctuary')
-await wait(150)
-await evaluate(`document.querySelector('.data-table tbody tr')?.click()`)
-await wait(100)
-const shieldBlockChance = await evaluate(
-  `(() => { const values=[...document.querySelectorAll('.item-base-values .item-value-line')]; const other=[...document.querySelectorAll('.detail-section')].find(section=>section.querySelector('h3')?.textContent.trim()==='其他數值'); const last=values.at(-1)?.textContent||''; return last.includes('15%') && last.includes('格擋機率') && !other?.textContent.includes('格擋機率'); })()`,
-)
-if (!shieldBlockChance) throw new Error('Shield block chance was not the final base defense value')
-await evaluate(`document.querySelector('.drawer-close')?.click()`)
-await setSearch('Ascendant Armor')
-await wait(150)
-const equipmentClassColumn = await evaluate(
-  `(() => { const headers=[...document.querySelectorAll('.data-table thead th')].map(node=>node.textContent.trim()); const cells=document.querySelectorAll('.data-table tbody tr:first-child td'); return headers[4]==='職業' && cells[4]?.textContent.trim()==='燼法師'; })()`,
-)
-if (!equipmentClassColumn)
-  throw new Error('Equipment table did not replace required level with the localized class column')
-const independentSetTag = await evaluate(`(() => {
-  const row=document.querySelector('.data-table tbody tr');
-  return Boolean(row?.textContent.includes('優越護衣') && row?.querySelector('.rarity.unique') && row?.querySelector('.set-tag') && row?.querySelector('.rarity-border.unique'))
-})()`)
-if (!independentSetTag)
-  throw new Error('Set membership replaced rarity or the icon rarity border is missing')
-await evaluate(`document.querySelector('.data-table tbody tr')?.click()`)
-await wait(100)
-const localizedClassRequirement = await evaluate(
-  `document.querySelector('.detail-section')?.parentElement?.textContent.includes('職業：燼法師') && !document.querySelector('.detail-section')?.parentElement?.textContent.includes('職業：Embermage')`,
-)
-if (!localizedClassRequirement) throw new Error('Equipment class requirement was not localized')
-await evaluate(`document.querySelector('.detail-gamble-link')?.click()`)
-await wait(160)
-const equipmentGamblePreset = await evaluate(
-  `(() => { const inputs=document.querySelectorAll('.gamble-controls input'); return location.hash.startsWith('#/gambling/chest/105/2/') && document.querySelector('.gamble-controls .select-trigger')?.textContent.includes('胸甲') && document.querySelector('.gamble-item-selection.selected')?.textContent.includes('VALUE 100') && inputs[0]?.value==='105' && inputs[0]?.max==='105' && inputs[1]?.value==='2'; })()`,
-)
-if (!equipmentGamblePreset)
-  throw new Error(
-    'Equipment details did not navigate to gambling with its selected item, type, level and original socket count',
-  )
-await evaluate(`location.hash='#/items'`)
-await wait(180)
-await evaluate(`document.querySelector('.data-toolbar .select-control .select-trigger')?.click()`)
-await wait(80)
-const styledSelects = await evaluate(`(() => {
-  const controls=[...document.querySelectorAll('.data-toolbar .select-control')];
-  const menu=controls[0]?.querySelector('.select-menu');
-  const options=[...(menu?.querySelectorAll('.select-option')||[])];
-  return controls.length===3 && menu?.getAttribute('role')==='listbox' && options.length===6
-    && getComputedStyle(menu).borderRadius==='10px' && getComputedStyle(menu).boxShadow!=='none'
-    && menu.textContent.includes('武器') && menu.textContent.includes('護甲') && !options.some(option=>option.dataset.value==='set')
-})()`)
-if (!styledSelects)
-  throw new Error('Equipment filters are not using the shared styled select control')
-await evaluate(`document.querySelector('.data-toolbar .select-control .select-trigger')?.click()`)
-await evaluate(
-  `document.querySelectorAll('.data-toolbar .select-trigger')[1]?.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))`,
-)
-await wait(60)
-await evaluate(
-  `document.querySelectorAll('.data-toolbar .select-trigger')[1]?.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));document.querySelectorAll('.data-toolbar .select-trigger')[1]?.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))`,
-)
-await wait(100)
-const keyboardSelect = await evaluate(
-  `document.querySelectorAll('.data-toolbar .select-trigger')[1]?.textContent.includes('稀有') && document.querySelectorAll('.data-toolbar .select-trigger')[1]?.getAttribute('aria-expanded')==='false'`,
-)
-if (!keyboardSelect)
-  throw new Error('Custom select keyboard navigation did not choose and close an option')
-await chooseOption('.data-toolbar .select-control:nth-of-type(2)', 'all')
-await evaluate(`location.hash='#/mechanics'`)
-await wait(200)
-const focusMechanics = await evaluate(
-  `(() => { const card=document.querySelector('.stat-summary.foc'); const tips=card?.querySelectorAll('.inline-tooltip [role="tooltip"]'); return Boolean(card?.textContent.includes('0.5 點法力上限') && card?.textContent.includes('0.5% 的元素傷害') && card?.textContent.includes('0.5% 的物理固傷') && card?.textContent.includes('處決（猛擊）機率') && tips?.[0]?.textContent.includes('屬性面板') && tips?.[1]?.textContent.includes('破碎之刃')); })()`,
-)
-if (!focusMechanics) throw new Error('Updated Focus mechanics copy or tooltip was not rendered')
-await chooseOption('.locale-select', 'en')
-const englishMechanics = await evaluate(
-  `(() => { const body=document.body.textContent; return body.includes('0.5% elemental damage') && body.includes('0.5% physical fixed damage') && body.includes('0.2% execute chance') && body.includes('0.2% block chance') && document.querySelector('.stat-summary.str [role="tooltip"]')?.textContent.includes('+50%') && document.querySelector('.stat-summary.dex [role="tooltip"]')?.textContent.includes('capped at 50%'); })()`,
-)
-if (!englishMechanics) throw new Error('English attribute copy or tooltip was not localized')
-await chooseOption('.locale-select', 'zh-CN')
-const simplifiedMechanics = await evaluate(
-  `(() => { const body=document.body.textContent; return body.includes('0.5% 的元素伤害') && body.includes('0.5% 的物理固伤') && body.includes('0.2% 的处决（猛击）几率') && body.includes('0.2% 的格挡几率') && body.includes('初始暴击伤害为 +50%'); })()`,
-)
-if (!simplifiedMechanics) throw new Error('Simplified Chinese attribute copy was not localized')
-await chooseOption('.locale-select', 'zh-TW')
 
-await evaluate(`location.hash='#/builds'`)
-await wait(250)
-await evaluate(`document.querySelector('.build-toolbar .planner-select .select-trigger')?.click()`)
-await wait(80)
-const localizedClassOptions = await evaluate(
-  `(() => { const text=document.querySelector('.build-toolbar .planner-select .select-menu')?.textContent||''; return ['狂戰士','異域行者','燼法師','工程師'].every(name=>text.includes(name))&&!text.includes('Berserker'); })()`,
+await visit('/')
+await evaluate(`document.querySelector('.search-button').click()`)
+await waitFor(`Boolean(document.querySelector('.search-backdrop input'))`)
+await evaluate(`(() => {
+  const input = document.querySelector('.search-backdrop input')
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Rune Vault')
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+})()`)
+await waitFor(
+  `[...document.querySelectorAll('.search-list button')].some((button) => button.textContent.includes('Rune Vault'))`,
 )
-if (!localizedClassOptions) throw new Error('Build-planner class options were not localized')
-await evaluate(`document.querySelector('.build-toolbar .planner-select .select-trigger')?.click()`)
-await evaluate(`document.querySelector('.reset-build')?.click()`)
-const buildShell = await evaluate(
-  `document.querySelectorAll('.gear-slot').length===12 && document.body.textContent.includes('495')`,
-)
-if (!buildShell) throw new Error('Build planner slots or point budget were not rendered')
-const removedBuildStatus = await evaluate(`!document.querySelector('.build-status')`)
-if (!removedBuildStatus) throw new Error('Removed build status panel is still rendered')
-await evaluate(`document.querySelectorAll('.gear-slot')[0]?.querySelector('.slot-empty')?.click()`)
-await wait(100)
 await evaluate(
-  `(() => { const input=document.querySelector('.picker-search input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"以目標為起點施放酸雨"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
+  `[...document.querySelectorAll('.search-list button')].find((button) => button.textContent.includes('Rune Vault')).click()`,
 )
-await wait(120)
-const buildEffectSearch = await evaluate(
-  `document.querySelector('.picker-search input')?.placeholder.includes('套裝或效果') && document.querySelector('.picker-list')?.textContent.includes('上古戰斧之一')`,
+await waitFor(
+  `location.pathname.endsWith('/classes/outlander/skills/rune-vault/') && !document.querySelector('.search-backdrop')`,
 )
-if (!buildEffectSearch)
-  throw new Error('Build planner did not search localized equipment effect text')
-await evaluate(
-  `(() => { const input=document.querySelector('.picker-search input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"Axe of the Elder One"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
-)
-await wait(120)
-await evaluate(`document.querySelectorAll('.picker-list > button')[1]?.click()`)
-await wait(120)
-await evaluate(`document.querySelector('.gear-preview .preview-replace')?.click()`)
-await wait(120)
-const buildSelection = await evaluate(
-  `document.querySelectorAll('.gear-slot.filled').length===1 && !document.querySelector('.gear-preview') && !document.querySelector('.derived-grid')?.textContent.includes('武器基礎傷害—') && document.querySelector('.derived-grid')?.textContent.includes('專注傷害加成')`,
-)
-if (!buildSelection) throw new Error('Build planner did not equip and inspect a weapon')
-await evaluate(`document.querySelector('.gear-slot.filled .slot-preview')?.click()`)
-await wait(100)
-const buildQuickView = await evaluate(
-  `(() => { const preview=document.querySelector('.gear-preview'); const values=preview?.querySelector('.gear-preview-values'); return Boolean(preview?.textContent.includes('酸雨') && preview?.textContent.includes('每秒傷害') && preview?.textContent.includes('攻擊間隔') && preview?.querySelectorAll('.gear-preview-sockets article').length===2 && preview.querySelector('.preview-replace') && ![...(values?.childNodes||[])].some(node=>node.nodeType===Node.TEXT_NODE&&node.textContent.trim())); })()`,
-)
-if (!buildQuickView)
-  throw new Error(
-    'Build planner equipment quick view did not show weapon values, localized effects and sockets',
-  )
-await evaluate(`document.querySelector('.gear-preview-sockets .choose-gem')?.click()`)
-await wait(100)
-await evaluate(
-  `(() => { const input=document.querySelector('.gem-picker .picker-search input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"The Eye of Grell"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
-)
-await wait(120)
-const gemLevels = await evaluate(
-  `(() => { const rows=[...document.querySelectorAll('.gem-picker .picker-list > button')]; return rows.length===1 && rows[0].textContent.includes('Lv 12') && rows[0].textContent.includes('爆擊率')&&!rows[0].textContent.includes('全部伤害'); })()`,
-)
-if (!gemLevels)
-  throw new Error('Gem picker did not show levels or filter to the target-compatible effects')
-await evaluate(`document.querySelector('.gem-picker .picker-list > button')?.click()`)
-await wait(120)
-const socketedWeaponGem = await evaluate(
-  `(() => { const preview=document.querySelector('.gear-preview'); const socket=preview?.querySelector('.gear-preview-sockets article'); return Boolean(socket?.textContent.includes('格雷爾之眼') && socket?.textContent.includes('爆擊率') && !socket?.textContent.includes('全部伤害')); })()`,
-)
-if (!socketedWeaponGem)
-  throw new Error('Weapon socket did not select and display only the weapon-side gem effect')
-await evaluate(`document.querySelector('.gear-preview > header button')?.click()`)
-const gemSummary = await evaluate(
-  `document.querySelector('.socketed-gems')?.textContent.includes('格雷爾之眼') && document.querySelector('.build-effects')?.textContent.includes('爆擊率') && document.querySelector('.gear-slot.filled .slot-socket-state')?.textContent.includes('1/2') && document.querySelectorAll('.gear-slot.filled .slot-socket-state em.filled').length===1`,
-)
-if (!gemSummary)
-  throw new Error('Socketed gem was not shown in the read-only panel or equipment effect summary')
-await evaluate(`document.querySelectorAll('.gear-slot')[4]?.querySelector('.slot-empty')?.click()`)
-await wait(100)
-await evaluate(
-  `(() => { const input=document.querySelector('.picker-search input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"Harbinger"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
-)
-await wait(120)
-const buildSetSearch = await evaluate(
-  `document.querySelector('.picker-list')?.textContent.includes('鴨爪護衣') && document.querySelector('.picker-list')?.textContent.includes('預言者')`,
-)
-if (!buildSetSearch) throw new Error('Build planner did not search equipment set names')
-await evaluate(
-  `(() => { const input=document.querySelector('.picker-search input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"Draketalon Armor"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
-)
-await wait(120)
-await evaluate(`document.querySelectorAll('.picker-list > button')[1]?.click()`)
-await wait(120)
-const collapsedSetBonuses = await evaluate(
-  `(() => { const details=document.querySelector('.gear-preview-set'); return Boolean(details && !details.open && details.textContent.includes('套裝效果') && details.textContent.includes('預言者')); })()`,
-)
-if (!collapsedSetBonuses)
-  throw new Error('Set bonuses were not rendered in a default-collapsed disclosure')
-await evaluate(`document.querySelector('.gear-preview > header button')?.click()`)
-await chooseOption('.build-toolbar .planner-select', 'outlander')
-await wait(120)
-await evaluate(`document.querySelectorAll('.gear-slot')[10]?.querySelector('.slot-empty')?.click()`)
-await wait(100)
-await evaluate(
-  `(() => { const input=document.querySelector('.picker-search input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"Ring of the Players"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
-)
-await wait(120)
-await evaluate(`document.querySelectorAll('.picker-list > button')[1]?.click()`)
-await wait(120)
-await evaluate(`document.querySelector('.gear-preview .preview-replace')?.click()`)
-await wait(120)
-const roundedPlannerStats = await evaluate(
-  `(() => { const dex=document.querySelector('.stat-allocation.dex'); return Boolean(dex?.querySelector('small')?.textContent.includes('15 + 20') && dex?.querySelector(':scope > strong')?.textContent.trim()==='35' && !document.body.textContent.includes('19.464')); })()`,
-)
-if (!roundedPlannerStats)
-  throw new Error('Build planner did not use the final rounded equipment attribute value')
-await evaluate(`document.querySelectorAll('.gear-slot')[11]?.querySelector('.slot-empty')?.click()`)
-await wait(100)
-await evaluate(
-  `(() => { const input=document.querySelector('.picker-search input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"Ring of the Players"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
-)
-await wait(120)
-await evaluate(`document.querySelectorAll('.picker-list > button')[1]?.click()`)
-await wait(120)
-await evaluate(`document.querySelector('.gear-preview .preview-replace')?.click()`)
-await wait(120)
-const stackedEffects = await evaluate(
-  `(() => { const panel=document.querySelector('.build-effects'); const dexRows=[...(panel?.querySelectorAll('li')||[])].filter(row=>row.textContent.includes('敏捷')); const ringSockets=[...document.querySelectorAll('.gear-slot.filled .slot-socket-state')].filter(row=>row.textContent.includes('0/2')); return dexRows.length===1 && dexRows[0].textContent.includes('+40點敏捷') && !dexRows[0].textContent.includes('× 2') && ringSockets.length===2; })()`,
-)
-if (!stackedEffects) throw new Error('Stackable fixed passive effects were not summed')
-await evaluate(`document.querySelector('.reset-build')?.click()`)
-await evaluate(`document.querySelectorAll('.gear-slot')[0]?.querySelector('.slot-empty')?.click()`)
-await wait(100)
-await evaluate(
-  `(() => { const input=document.querySelector('.picker-search input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,"Meteor Sword"); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
-)
-await wait(120)
-await evaluate(`document.querySelectorAll('.picker-list > button')[1]?.click()`)
-await wait(120)
-await evaluate(`document.querySelector('.gear-preview .preview-replace')?.click()`)
-await wait(120)
-await evaluate(`document.querySelector('.gear-slot.filled .slot-preview')?.click()`)
-await wait(100)
-const rareSockets = await evaluate(
-  `document.querySelectorAll('.gear-preview-sockets article').length===4`,
-)
-if (!rareSockets) throw new Error('Rare equipment was not treated as having four sockets')
-await evaluate(`document.querySelector('.gear-preview > header button')?.click()`)
-await evaluate(
-  `Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:text=>{window.__tl2BuildText=text;return Promise.resolve()},readText:()=>Promise.resolve(window.__tl2BuildText)}})`,
-)
-await evaluate(`document.querySelector('.export-build')?.click()`)
-await wait(100)
-const buildCopied = await evaluate(
-  `(() => { const text=window.__tl2BuildText||''; const data=text.match(/TL2BUILD\\/1:([A-Za-z0-9_-]+)/)?.[1]; return text.startsWith('Torchlight II Build\\n\\n在 Build Planner 中导入：\\nhttps://zhhc99.github.io/tl2-wiki/#/builds\\n\\nTL2BUILD/1:') && Boolean(data && /^[A-Za-z0-9_-]+$/.test(data) && !data.includes('=')) && document.querySelector('.build-snackbar')?.textContent.includes('已複製'); })()`,
-)
-if (!buildCopied) throw new Error('Build export did not copy versioned build text')
-await evaluate(
-  `document.querySelector('.reset-build')?.click();document.querySelector('.import-build')?.click()`,
-)
-await evaluate(`document.querySelector('.paste-build')?.click()`)
-await wait(100)
-const pastedBuild = await evaluate(
-  `document.querySelector('.build-transfer-dialog textarea')?.value===window.__tl2BuildText`,
-)
-if (!pastedBuild) throw new Error('Build import did not read the shared text from the clipboard')
-await evaluate(`document.querySelector('.build-transfer-dialog .transfer-primary')?.click()`)
-await wait(120)
-const importedBuild = await evaluate(
-  `document.querySelectorAll('.gear-slot.filled').length===1 && document.querySelector('.build-snackbar')?.textContent.includes('已匯入')`,
-)
-if (!importedBuild) throw new Error('Imported build did not restore its equipment')
-await evaluate(
-  `Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>Promise.reject(new DOMException('blocked','NotAllowedError')),readText:()=>Promise.reject(new DOMException('blocked','NotAllowedError'))}})`,
-)
-await evaluate(`document.querySelector('.export-build')?.click()`)
-await wait(100)
-const manualCopyFallback = await evaluate(
-  `(() => { const dialog=document.querySelector('.build-transfer-dialog'); const input=dialog?.querySelector('textarea'); return Boolean(input?.readOnly && input.value.startsWith('Torchlight II Build\\n') && input.value.includes('TL2BUILD/1:') && dialog?.textContent.includes('手動複製')); })()`,
-)
-if (!manualCopyFallback)
-  throw new Error('Blocked clipboard writes did not open the manual-copy fallback')
-await evaluate(
-  `window.__tl2BuildText=document.querySelector('.build-transfer-dialog textarea').value;document.querySelector('.build-transfer-dialog header button')?.click()`,
-)
-await wait(80)
-await evaluate(
-  `document.querySelector('.reset-build')?.click();document.querySelector('.import-build')?.click()`,
-)
-await wait(80)
-await evaluate(`document.querySelector('.paste-build')?.click()`)
-await wait(100)
-const manualPasteFallback = await evaluate(
-  `document.querySelector('.build-transfer-dialog .transfer-message')?.textContent.includes('手動貼上')`,
-)
-if (!manualPasteFallback)
-  throw new Error('Blocked clipboard reads did not explain the manual-paste fallback')
-await evaluate(
-  `(() => { const input=document.querySelector('.build-transfer-dialog textarea'); const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set; setter.call(input,window.__tl2BuildText.match(/TL2BUILD\\/1:[A-Za-z0-9_-]+/)[0]); input.dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('.build-transfer-dialog .transfer-primary')?.click(); })()`,
-)
-await wait(120)
-const manuallyImportedBuild = await evaluate(
-  `document.querySelectorAll('.gear-slot.filled').length===1 && !document.querySelector('.build-transfer-dialog')`,
-)
-if (!manuallyImportedBuild)
-  throw new Error('Manual clipboard fallback did not import the build text')
 
-await evaluate(`location.hash='#/gambling'`)
-await wait(200)
-await chooseOption('.gamble-controls .select-control', 'helmet')
-const numberInputCanClear = await evaluate(
-  `(() => { const input=document.querySelectorAll('.gamble-controls input')[0]; const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,''); input.dispatchEvent(new Event('input',{bubbles:true})); return input.value===''; })()`,
+await visit('/')
+await evaluate(`document.querySelector('.search-button').click()`)
+await waitFor(`Boolean(document.querySelector('.search-backdrop input'))`)
+await evaluate(`(() => {
+  const input = document.querySelector('.search-backdrop input')
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Ascendant Belt')
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+})()`)
+await waitFor(
+  `[...document.querySelectorAll('.search-list button')].some((button) => button.textContent.includes('Ascendant Belt'))`,
 )
-if (!numberInputCanClear)
-  throw new Error('Number input immediately replaced a temporarily empty value')
 await evaluate(
-  `(() => { const inputs=document.querySelectorAll('.gamble-controls input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(inputs[0],'50'); inputs[0].dispatchEvent(new Event('input',{bubbles:true})); setter.call(inputs[1],'1'); inputs[1].dispatchEvent(new Event('input',{bubbles:true})); })()`,
+  `[...document.querySelectorAll('.search-list button')].find((button) => button.textContent.includes('Ascendant Belt')).click()`,
 )
-await wait(120)
-const gamblePrices = await evaluate(
-  `(() => { const values=[...document.querySelectorAll('.price-row b')].map(node=>node.textContent); return values.length===4 && values[0]==='4,336' && values[1]==='4,416' })()`,
+await waitFor(
+  `location.pathname.endsWith('/items/ascendant-belt/') && !document.querySelector('.search-backdrop')`,
 )
-if (!gamblePrices)
-  throw new Error('Gambling calculator did not render the expected four exact prices')
-const gamblingCopy = await evaluate(
-  `document.body.textContent.includes('價格計算方式') && [...document.querySelectorAll('.gamble-notes [role="tooltip"]')].some(node=>node.textContent.includes('randInt(-3, 3)'))`,
+await evaluate(`document.querySelector('.drawer-close').click()`)
+await waitFor(
+  `location.pathname.endsWith('/items/') && !document.querySelector('.drawer-backdrop')`,
 )
-if (!gamblingCopy)
-  throw new Error('Traditional Chinese gambling copy or formula tooltip is missing')
-await chooseOption('.gamble-controls .select-control', 'amulet')
-await evaluate(`document.querySelector('.gamble-item-selection > button')?.click()`)
-await wait(80)
+
+await visit('/zh/classes/berserker/skills/eviscerate/')
+if (
+  !(await evaluate(
+    `document.documentElement.lang === 'zh-CN' && document.querySelector('.skill-layout .skill-panel') && document.title.includes('开膛破肚')`,
+  ))
+)
+  throw new Error('Localized skill page did not hydrate')
+
+await visit('/')
 await evaluate(
-  `(() => { const input=document.querySelector('.gamble-picker-backdrop .picker-search input'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,'Heartsalve'); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
+  `localStorage.removeItem('tl2-locale'); localStorage.removeItem('tl2-locale-prompt-dismissed')`,
 )
-await wait(100)
-await evaluate(
-  `document.querySelectorAll('.gamble-picker-backdrop .picker-list > button')[1]?.click()`,
-)
-await wait(100)
-const specificGambleItem = await evaluate(
-  `document.querySelector('.gamble-item-selection.selected')?.textContent.includes('VALUE 80') && document.querySelector('.price-results > header > strong')?.textContent.includes('VALUE 80')`,
-)
-if (!specificGambleItem)
-  throw new Error('Specific gambling item did not apply its database VALUE override')
-await evaluate(`location.hash='#/spells'`)
-await wait(200)
-const localizedSpells = await evaluate(
-  `document.body.textContent.includes('興奮爆發') && document.body.textContent.includes('這本秘笈')`,
-)
-if (!localizedSpells)
-  throw new Error('Complete database-provided spell-book locales were not rendered')
-const spellAvailability = await evaluate(
-  `(() => { const text=document.body.textContent; return ['Bee Swarm','Summon Blood Zombie','Web'].every(name=>text.includes(name)) && ['Critical Strikes','Identify Spell','Poison Cloud','Summon Aloe Gel','Summon Blood Skeleton','Summon Flaming Sword','Tunnelers','Waypoint Portal Spell','Whirling Flames'].every(name=>!text.includes(name)) })()`,
-)
-if (!spellAvailability) throw new Error('Spell-book availability filtering is incorrect')
-const spellBookLayout = await evaluate(
-  `(() => { const toolbar=document.querySelector('.data-toolbar'); const family=document.querySelector('.spell-families article > div'); return toolbar?.children.length===1 && toolbar.querySelector('input') && !toolbar.querySelector('[role="listbox"],select') && family?.firstElementChild?.tagName==='H2'; })()`,
-)
-if (!spellBookLayout)
-  throw new Error('Spell-book search layout still exposes a type filter or label')
-await evaluate(`location.hash='#/phases'`)
-await wait(250)
-const phasePage = await evaluate(
-  `(() => { const image=document.querySelector('.phase-guide img'); return Boolean(image?.complete && image.naturalWidth>0 && document.querySelectorAll('.phase-card').length===6 && document.querySelectorAll('.challenge-list h3').length===15 && document.querySelectorAll('.undocumented-rooms').length===3 && document.body.textContent.includes('2 個房間沒有遊戲內說明')) })()`,
-)
-if (!phasePage) throw new Error('Phase Beast guide, areas or challenges did not render')
-await call('Emulation.setDeviceMetricsOverride', {
-  width: 390,
-  height: 844,
-  deviceScaleFactor: 1,
-  mobile: true,
+const userAgent = await evaluate(`navigator.userAgent`)
+await call('Network.setUserAgentOverride', {
+  userAgent,
+  acceptLanguage: 'zh-CN,zh;q=0.9,en;q=0.8',
 })
-await wait(100)
-const mobileFits = await evaluate(`document.documentElement.scrollWidth <= 390`)
-if (!mobileFits) throw new Error('Mobile layout has horizontal overflow')
-await evaluate(`location.hash='#/mechanics'`)
-await wait(150)
-const mobileMechanicsFits = await evaluate(
-  `document.documentElement.scrollWidth <= 390 && document.querySelectorAll('.matrix-section').length===1`,
+await visit('/?locale-smoke=1')
+await waitFor(`Boolean(document.querySelector('.locale-suggestion'))`)
+await evaluate(`document.querySelector('.locale-suggestion-close').click()`)
+if (
+  !(await evaluate(
+    `!document.querySelector('.locale-suggestion') && localStorage.getItem('tl2-locale-prompt-dismissed') === '1'`,
+  ))
 )
-if (!mobileMechanicsFits)
-  throw new Error('Mobile mechanics layout overflowed or lost the hit matrix')
-await evaluate(`location.hash='#/builds'`)
-await wait(150)
-const mobileBuildFits = await evaluate(
-  `document.documentElement.scrollWidth <= 390 && document.querySelectorAll('.gear-slot').length===12`,
-)
-if (!mobileBuildFits) throw new Error('Mobile build planner overflows or lost equipment slots')
-await evaluate(`location.hash='#/gambling'`)
-await wait(150)
-const mobileGamblingFits = await evaluate(
-  `document.documentElement.scrollWidth <= 390 && document.querySelectorAll('.price-row b').length===4`,
-)
-if (!mobileGamblingFits)
-  throw new Error('Mobile gambling calculator overflows or lost price outcomes')
-await call('Emulation.clearDeviceMetricsOverride')
+  throw new Error('Locale suggestion is not dismissible')
 
 socket.close()
-console.log(
-  'Browser smoke test passed: data, shortcuts, languages, localized equipment effects, socket rules, build planner import/export, gambling calculator, Phase Beast guide and mobile fit',
-)
+console.log('Browser smoke test passed')

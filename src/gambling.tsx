@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CircleDollarSign, Info, Search, Shield, Swords, X } from 'lucide-react'
-import { allText, asset, ngLabel, type DbEquipment } from './domain'
+import { asset, type EquipmentIndexEntry } from './domain'
 import { copy, pick } from './i18n'
 import { NumberInput } from './NumberInput'
 import { SelectControl } from './SelectControl'
 import type { Lang } from './types'
+import { NgBadge, PageHeader } from './WikiUi'
 
 const gambleTypes = [
   { id: 'weapon', value: 100, en: 'Weapon', zhCN: '武器', zhTW: '武器' },
@@ -41,7 +42,7 @@ export const gambleTypeForEquipment = (category: string, subtype: string): Gambl
 }
 
 export const canGambleEquipment = (
-  item: Pick<DbEquipment, 'category' | 'subtype' | 'rarity' | 'level'>,
+  item: Pick<EquipmentIndexEntry, 'category' | 'subtype' | 'rarity' | 'level'>,
 ) =>
   gambleTypeForEquipment(item.category, item.subtype) !== null &&
   (item.rarity !== 'legendary' || item.level === 105)
@@ -58,13 +59,16 @@ const decodeId = (value: string | undefined) => {
     return null
   }
 }
-const gamblingPresetFromHash = (items: DbEquipment[]) => {
-  const [page, requestedType, requestedLevel, requestedSockets, requestedItemId] =
-    window.location.hash.replace('#/', '').split('/')
+const gamblingPreset = (items: EquipmentIndexEntry[], search: string) => {
+  const params = new URLSearchParams(search)
+  const requestedType = params.get('type') ?? undefined
+  const requestedLevel = params.get('level') ?? undefined
+  const requestedSockets = params.get('sockets') ?? undefined
+  const requestedItemId = params.get('item') ?? undefined
   const routeType = gambleTypes.some((row) => row.id === requestedType)
     ? (requestedType as GambleType)
     : 'weapon'
-  const itemId = page === 'gambling' ? decodeId(requestedItemId) : null
+  const itemId = decodeId(requestedItemId)
   const item = itemId
     ? items.find((candidate) => candidate.id === itemId && canGambleEquipment(candidate))
     : undefined
@@ -92,19 +96,33 @@ function Tooltip({ text }: { text: string }) {
   )
 }
 
-function NgBadge({ tier }: { tier: number }) {
-  const label = ngLabel(tier)
-  return label ? <span className="ng-badge">{label}</span> : null
-}
-
-export function GamblingPage({ lang, items }: { lang: Lang; items: DbEquipment[] }) {
-  const [initial] = useState(() => gamblingPresetFromHash(items))
+export function GamblingPage({
+  lang,
+  items,
+  onLoadItems,
+  search = '',
+}: {
+  lang: Lang
+  items: EquipmentIndexEntry[]
+  onLoadItems: () => void
+  search?: string
+}) {
+  const [initial] = useState(() => gamblingPreset(items, search))
   const [type, setType] = useState<GambleType>(initial.type)
   const [level, setLevel] = useState(initial.level)
   const [sockets, setSockets] = useState(initial.sockets)
   const [itemId, setItemId] = useState<string | null>(initial.itemId)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState('')
+  useEffect(() => {
+    if (!new URLSearchParams(search).get('item') || !items.length) return
+    const preset = gamblingPreset(items, search)
+    if (!preset.itemId) return
+    setType(preset.type)
+    setLevel(preset.level)
+    setSockets(preset.sockets)
+    setItemId(preset.itemId)
+  }, [items, search])
   const selectedType = gambleTypes.find((row) => row.id === type) ?? gambleTypes[0]
   const selectedItem = itemId ? (items.find((item) => item.id === itemId) ?? null) : null
   const value = selectedItem?.value ?? selectedType.value
@@ -118,17 +136,14 @@ export function GamblingPage({ lang, items }: { lang: Lang; items: DbEquipment[]
       (item) =>
         canGambleEquipment(item) &&
         gambleTypeForEquipment(item.category, item.subtype) === type &&
-        (!needle ||
-          `${allText(item.name)} ${item.set ? allText(item.set) : ''} ${item.effects.map((effect) => (effect.text ? allText(effect.text) : '')).join(' ')}`
-            .toLowerCase()
-            .includes(needle)),
+        (!needle || item.searchText.includes(needle)),
     )
   }, [items, type, query])
   const changeType = (next: string) => {
     setType(next as GambleType)
     setItemId(null)
   }
-  const chooseItem = (item: DbEquipment) => {
+  const chooseItem = (item: EquipmentIndexEntry) => {
     const itemType = gambleTypeForEquipment(item.category, item.subtype)
     if (!itemType || !canGambleEquipment(item)) return
     setType(itemType)
@@ -142,20 +157,17 @@ export function GamblingPage({ lang, items }: { lang: Lang; items: DbEquipment[]
     'P = trunc[(1 + 0.1S) × ceil(V × (400 + 100[L + max(0, randInt(-3, 3))]) × 0.01_f)], P ≥ 1'
   return (
     <>
-      <section className="page-header">
-        <div className="content">
-          <span>{copy(lang, '商店', 'Shop', '商店')}</span>
-          <h1>{copy(lang, '赌博', 'Gambling', '賭博')}</h1>
-          <p>
-            {copy(
-              lang,
-              '选择物品类型、等级和孔数，查看赌博商人可能给出的四档价格。',
-              'Choose an item type, level and socket count to see the gambler’s four possible prices.',
-              '選擇物品類型、等級與孔數，查看賭博商人可能開出的四種價格。',
-            )}
-          </p>
-        </div>
-      </section>
+      <PageHeader
+        section={copy(lang, '商店', 'Shop', '商店')}
+        title={copy(lang, '赌博', 'Gambling', '賭博')}
+      >
+        {copy(
+          lang,
+          '选择物品类型、等级和孔数，查看赌博商人可能给出的四档价格。',
+          'Choose an item type, level and socket count to see the gambler’s four possible prices.',
+          '選擇物品類型、等級與孔數，查看賭博商人可能開出的四種價格。',
+        )}
+      </PageHeader>
       <div className="content page-body gamble-page">
         <div className="gamble-layout">
           <section className="gamble-controls">
@@ -182,6 +194,7 @@ export function GamblingPage({ lang, items }: { lang: Lang; items: DbEquipment[]
                 <button
                   onClick={() => {
                     setQuery('')
+                    onLoadItems()
                     setPickerOpen(true)
                   }}
                 >

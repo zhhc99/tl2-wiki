@@ -35,10 +35,12 @@ export function BuildsPage({
   lang,
   items,
   classes,
+  onLoadItems,
 }: {
   lang: Lang
   items: PlannerEquipment[]
   classes: DbClass[]
+  onLoadItems: () => void
 }) {
   const [classId, setClassId] = useState('berserker')
   const [level, setLevel] = useState(100)
@@ -69,13 +71,14 @@ export function BuildsPage({
         setAllocated((current) => ({ ...current, ...saved.allocated }))
         setLoadout({ ...emptyLoadout(), ...saved.loadout })
         setSocketLoadout(saved.socketLoadout || {})
+        if (Object.values(saved.loadout || {}).some(Boolean)) onLoadItems()
       }
     } catch {
       /* ignore invalid old data */
     } finally {
       setRestored(true)
     }
-  }, [])
+  }, [onLoadItems])
   useEffect(() => {
     if (restored)
       try {
@@ -229,6 +232,7 @@ export function BuildsPage({
     if (previewSlot === slot) setPreviewSlot(null)
   }
   const openItemPicker = (slot: Slot) => {
+    onLoadItems()
     setPicker(slot)
     setQuery('')
   }
@@ -406,7 +410,6 @@ export function BuildsPage({
       </PageHeader>
       <BuildWorkspace
         lang={lang}
-        itemsReady={Boolean(items.length)}
         classes={classes}
         classId={classId}
         level={level}
@@ -420,7 +423,10 @@ export function BuildsPage({
         onAllocatedChange={(stat, value) =>
           setAllocated((current) => ({ ...current, [stat]: value }))
         }
-        onOpenImport={() => setTransfer({ mode: 'import', text: '', message: '' })}
+        onOpenImport={() => {
+          onLoadItems()
+          setTransfer({ mode: 'import', text: '', message: '' })
+        }}
         onExport={exportBuild}
         onReset={resetBuild}
         onPreview={openPreview}

@@ -283,3 +283,9 @@ P = trunc[(1 + 0.1S) × ceil(V × (400 + 100[L + max(0, randInt(-3, 3))]) × 0.0
 多语言改进:
 
 - 根据 `docs/non-database-text-fixed.csv` 执行多文本替换.
+
+## 修改基于 f75d19b
+
+使用 RR7 添加 SEO 支持. 数据库对应更新 `family_id` 字段用于 slug.
+
+SEO 的实现方式见 `docs/seo.md`. 进行了 3 轮 质量评估 -> 跟进 的循环. 质量评估包括 SEO 规范性, 代码简洁性, 以及构建产物质量和尺寸.

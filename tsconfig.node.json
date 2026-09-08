@@ -8,5 +8,12 @@
     "noEmit": true,
     "tsBuildInfoFile": "./node_modules/.cache/tsconfig.node.tsbuildinfo"
   },
-  "include": ["vite.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "react-router.config.ts",
+    "src/domain.ts",
+    "src/paths.ts",
+    "src/types.ts",
+    "src/vite-env.d.ts"
+  ]
 }

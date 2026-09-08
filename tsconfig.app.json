@@ -15,7 +15,9 @@
     "isolatedModules": true,
     "noEmit": true,
     "tsBuildInfoFile": "./node_modules/.cache/tsconfig.app.tsbuildinfo",
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "rootDirs": [".", "./.react-router/types"],
+    "types": ["vite/client", "node"]
   },
-  "include": ["src"]
+  "include": ["src", ".react-router/types/**/*"]
 }

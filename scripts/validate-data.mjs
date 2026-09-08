@@ -17,6 +17,70 @@ const graphs = read('skill-graphs.json')
 const spells = read('spell-books.json')
 const phases = read('phase-beasts.json')
 const meta = read('meta.json')
+const equipmentIndex = read('equipment-index.json')
+const searchIndex = read('search-index.json')
+
+const sameIds = (actual, expected) =>
+  actual.length === expected.length && actual.every((row, index) => row.id === expected[index].id)
+const hasKeys = (row, keys) => Object.keys(row).sort().join(',') === keys.slice().sort().join(',')
+const equipmentIndexKeys = [
+  'id',
+  'familyId',
+  'name',
+  'category',
+  'subtype',
+  'rarity',
+  'value',
+  'level',
+  'sockets',
+  'classRequirement',
+  'set',
+  'iconPath',
+  'ngTier',
+  'searchText',
+]
+assert(
+  sameIds(equipmentIndex, equipment) &&
+    equipmentIndex.every(
+      (item) =>
+        hasKeys(item, equipmentIndexKeys) &&
+        typeof item.searchText === 'string' &&
+        item.searchText.length > 0,
+    ),
+  'Equipment index is stale or has invalid fields',
+)
+
+const searchKeys = {
+  class: ['type', 'id', 'name', 'searchText'],
+  skill: ['type', 'id', 'name', 'searchText', 'image', 'classId', 'className', 'skillKind'],
+  item: ['type', 'id', 'name', 'searchText', 'image', 'familyId', 'subtype', 'level', 'ngTier'],
+  spell: ['type', 'id', 'name', 'searchText', 'image', 'family'],
+  phase: ['type', 'id', 'name', 'searchText', 'rooms'],
+}
+const searchSources = {
+  class: classes,
+  skill: skills,
+  item: equipment,
+  spell: spells,
+  phase: phases,
+}
+assert(
+  Object.entries(searchSources).every(([type, source]) =>
+    sameIds(
+      searchIndex.filter((entry) => entry.type === type),
+      source,
+    ),
+  ) &&
+    searchIndex.every(
+      (entry) =>
+        searchKeys[entry.type] &&
+        hasKeys(entry, searchKeys[entry.type]) &&
+        typeof entry.searchText === 'string' &&
+        entry.searchText.length > 0 &&
+        !['ranks', 'effects', 'requirements'].some((key) => Object.hasOwn(entry, key)),
+    ),
+  'Search index is stale or has invalid fields',
+)
 
 assert(meta.version === 2, 'Unexpected public data version')
 assert(
@@ -24,7 +88,8 @@ assert(
   'Unexpected equipment count',
 )
 assert(
-  unique(equipment) && equipment.every((item) => local(item.name) && iconExists(item)),
+  unique(equipment) &&
+    equipment.every((item) => item.familyId && local(item.name) && iconExists(item)),
   'Invalid equipment identity',
 )
 assert(
