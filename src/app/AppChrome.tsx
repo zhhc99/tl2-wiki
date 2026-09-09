@@ -1,5 +1,5 @@
 import { Globe2, Menu, Search, X } from 'lucide-react'
-import { Link } from 'react-router'
+import { Link, useNavigation } from 'react-router'
 import { localeOptions, tr, type UIKey } from '../i18n'
 import { SelectControl } from '../SelectControl'
 import type { Lang } from '../types'
@@ -22,6 +22,7 @@ export function Header({
   setMobileOpen: (open: boolean) => void
   onSearch: () => void
 }) {
+  const navigation = useNavigation()
   const nav: { page: Page; label: UIKey }[] = [
     { page: 'home', label: 'navHome' },
     { page: 'classes', label: 'navClasses' },
@@ -45,6 +46,7 @@ export function Header({
               key={item.page}
               className={page === item.page ? 'active' : ''}
               to={href(item.page)}
+              prefetch="render"
               onClick={() => setMobileOpen(false)}
             >
               {tr(lang, item.label)}
@@ -74,6 +76,9 @@ export function Header({
           </button>
         </div>
       </div>
+      {navigation.state !== 'idle' && (
+        <div className="navigation-progress" role="progressbar" aria-label={tr(lang, 'loading')} />
+      )}
     </header>
   )
 }

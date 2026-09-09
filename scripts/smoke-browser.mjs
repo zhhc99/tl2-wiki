@@ -64,6 +64,27 @@ const routeDataRequests = () =>
 await visit('/')
 if (!(await evaluate(`document.body.textContent.includes('4,029')`)))
   throw new Error('English home page did not hydrate')
+await waitFor(`Boolean(document.querySelector('link[rel="modulepreload"][href*="/assets/site-"]'))`)
+await call('Network.clearBrowserCache')
+await call('Network.setCacheDisabled', { cacheDisabled: true })
+await call('Network.emulateNetworkConditions', {
+  offline: false,
+  latency: 500,
+  downloadThroughput: -1,
+  uploadThroughput: -1,
+})
+await evaluate(`document.querySelector('.main-nav a[href$="/mechanics/"]').click()`)
+await waitFor(
+  `document.querySelector('.navigation-progress') && getComputedStyle(document.querySelector('.navigation-progress')).opacity === '1'`,
+)
+await waitFor(`location.pathname.endsWith('/mechanics/')`)
+await call('Network.emulateNetworkConditions', {
+  offline: false,
+  latency: 0,
+  downloadThroughput: -1,
+  uploadThroughput: -1,
+})
+await call('Network.setCacheDisabled', { cacheDisabled: false })
 
 await visit('/items/nargothrels-band/')
 if (fullEquipmentRequests() !== 0)
