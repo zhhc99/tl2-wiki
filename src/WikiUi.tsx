@@ -16,17 +16,26 @@ export const originalName = (value: LocalText, lang: Lang) =>
 export function PageHeader({
   section,
   title,
+  documentTitle,
   children,
 }: {
   section: string
   title: string
+  documentTitle?: string
   children: string
 }) {
   return (
     <section className="page-header">
       <div className="content">
         <span>{section}</span>
-        <h1>{title}</h1>
+        {documentTitle ? (
+          <>
+            <h1 className="sr-only">{documentTitle}</h1>
+            <div className="page-title">{title}</div>
+          </>
+        ) : (
+          <h1>{title}</h1>
+        )}
         <p>{children}</p>
       </div>
     </section>

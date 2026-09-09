@@ -39,7 +39,7 @@
 需要满足以下 SEO 友好性:
 
 - 页面有正常 `<title>` 和 meta description.
-- 实体页面的 `<h1>` 是实体名而不是上级 SPA 标题. 注意这和 SPA 并不冲突, React 可以在 Soft Navigation 时直接更新 H1.
+- 实体页面的 `<h1>` 是实体名而不是上级 SPA 标题. 注意这和 SPA 并不冲突, React 可以在 Soft Navigation 时直接更新 H1. 这里的 H1 应该使用隐藏的 `.sr-only` 提供文档结构和读屏访问, 并用 H2 呈现原标题.
 - 配置 `sitemap.xml`.
 
 ## 其他注意事项

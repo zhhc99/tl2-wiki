@@ -32,7 +32,9 @@ checkMatches('skill data', /\/skills\/[^/]+\.data$/, 128 * 1024)
 const arcgapsVice = 'items/arcgaps-vice/index.html'
 if (!files.includes(arcgapsVice)) failures.push(`${arcgapsVice}: missing prerendered page`)
 else if (
-  !/<h1>Arcgap(?:&#x27;|')s Vice<\/h1>/.test(readFileSync(resolve(pages, arcgapsVice), 'utf8'))
+  !/<h1 class="sr-only">Arcgap(?:&#x27;|')s Vice<\/h1>/.test(
+    readFileSync(resolve(pages, arcgapsVice), 'utf8'),
+  )
 )
   failures.push(`${arcgapsVice}: entity name is not the H1`)
 

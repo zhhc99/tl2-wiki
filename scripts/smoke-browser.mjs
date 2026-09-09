@@ -58,6 +58,8 @@ const visit = async (path) => {
 }
 const fullEquipmentRequests = () =>
   requestUrls.filter((url) => new URL(url).pathname.endsWith('/data/equipment.json')).length
+const routeDataRequests = () =>
+  requestUrls.filter((url) => new URL(url).pathname.endsWith('.data')).length
 
 await visit('/')
 if (!(await evaluate(`document.body.textContent.includes('4,029')`)))
@@ -68,7 +70,7 @@ if (fullEquipmentRequests() !== 0)
   throw new Error('Direct equipment route requested the full equipment data on initial load')
 if (
   !(await evaluate(
-    `document.querySelector('.page-header h1').textContent === "Nargothrel's Band" && document.querySelector('.detail-drawer h2').textContent.includes("Nargothrel's Band") && document.querySelector('.data-table') && document.querySelectorAll('link[rel="alternate"]').length === 4`,
+    `document.querySelector('.page-header h1').textContent === "Nargothrel's Band" && document.querySelector('.page-header .page-title').textContent === 'Equipment' && document.querySelector('.detail-drawer h2').textContent.includes("Nargothrel's Band") && document.querySelector('.data-table') && document.querySelectorAll('link[rel="alternate"]').length === 4`,
   ))
 )
   throw new Error('Direct equipment route does not render the equipment drawer or SEO links')
@@ -76,10 +78,14 @@ if (
 await visit('/classes/outlander/')
 if (
   !(await evaluate(
-    `document.querySelector('.page-header h1').textContent === 'Outlander' && document.querySelector('.skill-panel h2').textContent === 'Rapid Fire' && document.querySelector('.skill-table a[href$="/rune-vault/"]') instanceof HTMLAnchorElement`,
+    `document.querySelector('.page-header h1').textContent === 'Outlander' && document.querySelector('.page-header .page-title').textContent === 'Classes' && document.querySelector('.skill-panel h2').textContent === 'Rapid Fire' && document.querySelector('.skill-table a[href$="/rune-vault/"]') instanceof HTMLAnchorElement`,
   ))
 )
   throw new Error('Class route does not render its first skill')
+await waitFor(
+  `[...performance.getEntriesByType('resource')].some((entry) => entry.name.endsWith('/data/class-skills.json') && entry.responseEnd > 0)`,
+)
+const classRouteDataRequests = routeDataRequests()
 if (
   !(await evaluate(
     `(() => { const style = getComputedStyle(document.querySelector('.tree-tabs a')); return style.display.endsWith('flex') && style.alignItems === 'center' && style.justifyContent === 'center' })()`,
@@ -93,6 +99,8 @@ await evaluate(`document.querySelector('.skill-table a[href$="/rune-vault/"]').c
 await waitFor(
   `location.pathname.endsWith('/classes/outlander/skills/rune-vault/') && document.querySelector('.skill-panel h2').textContent === 'Rune Vault' && document.querySelector('link[rel="canonical"]').href.endsWith('/classes/outlander/skills/rune-vault/')`,
 )
+if (routeDataRequests() !== classRouteDataRequests)
+  throw new Error('Cached skill navigation requested route data')
 if (!(await evaluate(`window.__softNavigationMarker === true`)))
   throw new Error('Skill selection caused a document navigation')
 if (!(await evaluate(`scrollY === window.__scrollMarker`)))
@@ -112,6 +120,10 @@ await visit('/items/')
 await waitFor(
   `[...document.querySelectorAll('tbody a')].some((link) => link.textContent.includes('Ascendant Belt'))`,
 )
+await waitFor(
+  `[...performance.getEntriesByType('resource')].some((entry) => entry.name.endsWith('/data/equipment.json') && entry.responseEnd > 0)`,
+)
+const itemRouteDataRequests = routeDataRequests()
 await evaluate(
   `document.documentElement.style.scrollBehavior = 'auto'; scrollTo(0, 500); window.__softNavigationMarker = true; window.__scrollMarker = scrollY`,
 )
@@ -121,6 +133,8 @@ await evaluate(
 await waitFor(
   `location.pathname.endsWith('/items/ascendant-belt/') && document.querySelector('.detail-drawer h2').textContent.includes('Ascendant Belt') && document.querySelector('link[rel="canonical"]').href.endsWith('/items/ascendant-belt/')`,
 )
+if (routeDataRequests() !== itemRouteDataRequests)
+  throw new Error('Cached equipment navigation requested route data')
 if (!(await evaluate(`window.__softNavigationMarker === true`)))
   throw new Error('Equipment selection caused a document navigation')
 if (!(await evaluate(`scrollY === window.__scrollMarker`)))
@@ -190,7 +204,7 @@ await waitFor(
 await visit('/zh/classes/berserker/skills/eviscerate/')
 if (
   !(await evaluate(
-    `document.documentElement.lang === 'zh-CN' && document.querySelector('.page-header h1').textContent === '开膛破肚' && document.querySelector('.skill-layout .skill-panel') && document.title.includes('开膛破肚')`,
+    `document.documentElement.lang === 'zh-CN' && document.querySelector('.page-header h1').textContent === '开膛破肚' && document.querySelector('.page-header .page-title').textContent === '职业' && document.querySelector('.skill-layout .skill-panel') && document.title.includes('开膛破肚')`,
   ))
 )
   throw new Error('Localized skill page did not hydrate')

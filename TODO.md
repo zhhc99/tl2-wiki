@@ -305,3 +305,13 @@ SEO:
 
 - robots.txt 在 github pages 上没有有效方案 (因为 Google 只看根域). 直接删除.
 - 实体页的 H1 仍是 "装备" "职业" 等栏目名, 而不是具体项目名. 用 seo.md 文档中的思路实现. 用测试确保 `items/arcgaps-vice/` 这类页面的 H1 是装备标题.
+
+## 修改基于 f7d8da5
+
+SEO:
+
+- 明确 H1 规范并修正实现.
+
+SPA 体验:
+
+- 提高实体响应速度 (通过 RR Skip the Server Hop).

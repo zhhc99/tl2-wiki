@@ -25,7 +25,7 @@ export function ClassesPage({
   skillGraphs,
   skillHref,
   classHref,
-  heading,
+  documentTitle,
 }: {
   lang: Lang
   classId: string
@@ -35,7 +35,7 @@ export function ClassesPage({
   skillGraphs: SkillGraphs
   skillHref: (skill: ClassSkillSummary) => string
   classHref: (classId: string) => string
-  heading?: string
+  documentTitle?: string
 }) {
   const hero = classes.find((item) => item.id === classId) ?? classes[0]
   const trees = hero.trees.map((tree) => ({
@@ -54,7 +54,11 @@ export function ClassesPage({
   }
   return (
     <>
-      <PageHeader section={tr(lang, 'navClasses')} title={heading ?? tr(lang, 'classesTitle')}>
+      <PageHeader
+        section={tr(lang, 'navClasses')}
+        title={tr(lang, 'classesTitle')}
+        documentTitle={documentTitle}
+      >
         {copy(
           lang,
           '选择职业和技能树，查看游戏说明、每级数值与阶段奖励。',

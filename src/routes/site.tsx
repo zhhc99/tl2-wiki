@@ -14,11 +14,15 @@ import { SpellsPage } from '../app/SpellsPage'
 import type { Page } from '../app/navigation'
 import {
   equipmentFamily,
+  type ClassSkillSummary,
+  type DbClass,
+  type DbClassSkill,
   type DbEquipment,
   type EquipmentIndexEntry,
   type EquipmentSummary,
   type SearchIndexEntry,
   type SiteData,
+  type SkillGraphs,
 } from '../domain'
 import { GamblingPage, canGambleEquipment, gambleTypeForEquipment } from '../gambling'
 import { copy, pick } from '../i18n'
@@ -95,33 +99,109 @@ export function meta({ data }: Route.MetaArgs) {
   ]
 }
 
-const loadJson = async <T,>(name: string): Promise<T> => {
-  const response = await fetch(`${import.meta.env.BASE_URL}data/${name}.json`)
-  if (!response.ok) throw new Error(String(response.status))
-  return response.json() as Promise<T>
+const jsonPromises = new Map<string, Promise<unknown>>()
+const jsonCache = new Map<string, unknown>()
+const loadJson = <T,>(name: string): Promise<T> => {
+  let promise = jsonPromises.get(name) as Promise<T> | undefined
+  if (!promise) {
+    promise = fetch(`${import.meta.env.BASE_URL}data/${name}.json`).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status))
+      const value = (await response.json()) as T
+      jsonCache.set(name, value)
+      return value
+    })
+    jsonPromises.set(name, promise)
+  }
+  return promise
 }
+const cachedJson = <T,>(name: string) => jsonCache.get(name) as T | undefined
+const loadEquipment = () => loadJson<DbEquipment[]>('equipment')
+const loadEquipmentIndex = () => loadJson<EquipmentIndexEntry[]>('equipment-index')
+const loadSearchIndex = () => loadJson<SearchIndexEntry[]>('search-index')
+const loadClasses = () => loadJson<DbClass[]>('classes')
 
-let equipmentPromise: Promise<DbEquipment[]> | undefined
-let equipmentIndexPromise: Promise<EquipmentIndexEntry[]> | undefined
-let searchIndexPromise: Promise<SearchIndexEntry[]> | undefined
-const loadEquipment = () => (equipmentPromise ??= loadJson<DbEquipment[]>('equipment'))
-const loadEquipmentIndex = () =>
-  (equipmentIndexPromise ??= loadJson<EquipmentIndexEntry[]>('equipment-index'))
-const loadSearchIndex = () => (searchIndexPromise ??= loadJson<SearchIndexEntry[]>('search-index'))
+const skillSummary = ({
+  id,
+  classId,
+  treeId,
+  name,
+  kind,
+  level,
+  iconPath,
+}: DbClassSkill): ClassSkillSummary => ({ id, classId, treeId, name, kind, level, iconPath })
 
 async function loadClientEquipmentData() {
-  const [equipment, classes] = await Promise.all([
-    loadEquipment(),
-    loadJson<SiteData['classes']>('classes'),
-  ])
+  const [equipment, classes] = await Promise.all([loadEquipment(), loadClasses()])
   return { equipment, classes }
 }
 
+const loadClientClassData = async () =>
+  Promise.all([
+    loadJson<DbClassSkill[]>('class-skills'),
+    loadClasses(),
+    loadJson<SkillGraphs>('skill-graphs'),
+  ])
+
+function cachedClientPage(pathname: string): Awaited<ReturnType<typeof loader>> | undefined {
+  const { lang, routePath } = parseLocalizedPath(pathname)
+  const equipmentCache = cachedJson<DbEquipment[]>('equipment')
+  const equipmentIndexCache = cachedJson<EquipmentIndexEntry[]>('equipment-index')
+  const classSkillsCache = cachedJson<DbClassSkill[]>('class-skills')
+  const classesCache = cachedJson<DbClass[]>('classes')
+  const skillGraphsCache = cachedJson<SkillGraphs>('skill-graphs')
+  const itemMatch = routePath.match(/^items\/([^/]+)$/)
+  if (itemMatch && equipmentCache && classesCache) {
+    const itemFamily = equipmentFamily(equipmentCache, itemMatch[1])
+    if (!itemFamily.length) return
+    return {
+      kind: 'item',
+      lang,
+      routePath,
+      data: { classes: classesCache },
+      itemFamily,
+      totalEquipment: equipmentCache.length,
+    }
+  }
+  if (routePath === 'items' && equipmentIndexCache && classesCache)
+    return {
+      kind: 'items',
+      lang,
+      routePath,
+      data: { classes: classesCache },
+      totalEquipment: equipmentIndexCache.length,
+      equipmentRows: equipmentIndexCache
+        .slice(0, 40)
+        .map(({ searchText: _searchText, ...item }) => item),
+    }
+  if (!classSkillsCache || !classesCache || !skillGraphsCache) return
+  const skillMatch = routePath.match(/^classes\/([^/]+)\/skills\/([^/]+)$/)
+  const classMatch = routePath.match(/^classes\/([^/]+)$/)
+  const classId =
+    skillMatch?.[1] ?? classMatch?.[1] ?? (routePath === 'classes' ? classesCache[0].id : '')
+  if (!classId) return
+  const skills = classSkillsCache.filter((skill) => skill.classId === classId)
+  const selectedSkill = skillMatch
+    ? skills.find((skill) => slugify(skill.name.en) === skillMatch[2])
+    : skills[0]
+  if (!classesCache.some((hero) => hero.id === classId) || !selectedSkill) return
+  return {
+    kind: skillMatch ? 'skill' : classMatch ? 'class' : 'classes',
+    lang,
+    routePath,
+    data: { classes: classesCache, skillGraphs: skillGraphsCache },
+    skills: skills.map(skillSummary),
+    selectedSkill,
+    classId,
+  }
+}
+
 export async function clientLoader({ request, serverLoader }: Route.ClientLoaderArgs) {
+  const pathname = new URL(request.url).pathname.replace(/^\/tl2-wiki/, '') || '/'
+  const cached = cachedClientPage(pathname)
+  if (cached) return cached
   try {
     return await serverLoader()
   } catch (error) {
-    const pathname = new URL(request.url).pathname.replace(/^\/tl2-wiki/, '') || '/'
     const { lang, routePath } = parseLocalizedPath(pathname)
     const slug = routePath.match(/^items\/([^/]+)$/)?.[1]
     if (!slug) throw error
@@ -168,6 +248,11 @@ export default function Site({ loaderData }: Route.ComponentProps) {
     if (kind !== 'items' || equipmentIndex.length === loaderData.totalEquipment) return
     requestEquipmentIndex()
   }, [kind, equipmentIndex.length, loaderData.totalEquipment, requestEquipmentIndex])
+  useEffect(() => {
+    if (kind === 'items') loadClientEquipmentData().catch(() => undefined)
+    if (kind === 'classes' || kind === 'class' || kind === 'skill')
+      loadClientClassData().catch(() => undefined)
+  }, [kind])
   useEffect(() => {
     if (kind === 'gambling' && new URLSearchParams(location.search).get('item'))
       requestEquipmentIndex()
@@ -314,7 +399,7 @@ export default function Site({ loaderData }: Route.ComponentProps) {
               localizedPath(lang, `classes/${skill.classId}/skills/${slugify(skill.name.en)}`)
             }
             classHref={(classId) => localizedPath(lang, `classes/${classId}`)}
-            heading={
+            documentTitle={
               kind === 'skill'
                 ? pick(loaderData.selectedSkill!.name, lang)
                 : kind === 'class'
@@ -338,7 +423,7 @@ export default function Site({ loaderData }: Route.ComponentProps) {
             itemHref={(item) => localizedPath(lang, `items/${item.familyId}`)}
             selected={selectedItem}
             selectedVariants={selectedVariants}
-            heading={kind === 'item' ? pick(selectedItem!.name, lang) : undefined}
+            documentTitle={kind === 'item' ? pick(selectedItem!.name, lang) : undefined}
             onSelect={openItem}
             onClose={closeItem}
             dataReady={kind === 'items' && equipmentIndex.length === loaderData.totalEquipment}

@@ -102,7 +102,7 @@ kbd { padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; backg
 
 .page-header { padding: 34px 0 30px; border-bottom: 1px solid var(--line); background: #ebe5da; }
 .page-header span { color: var(--accent); font-size: 12px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
-.page-header h1 { margin: 5px 0 6px; font: 600 clamp(36px,4vw,48px)/1.12 serif; letter-spacing: -.035em; }
+.page-header h1:not(.sr-only),.page-header .page-title { margin: 5px 0 6px; font: 600 clamp(36px,4vw,48px)/1.12 serif; letter-spacing: -.035em; }
 .page-header p { max-width: 760px; margin: 0; color: var(--muted); font-size: 16px; line-height: 1.6; }
 .page-body { padding: 28px 0 68px; }
 .segmented { padding: 4px; display: flex; align-items: center; gap: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
