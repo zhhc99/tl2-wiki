@@ -30,6 +30,7 @@ const equipmentIndexKeys = [
   'category',
   'subtype',
   'rarity',
+  'rarityValue',
   'value',
   'level',
   'sockets',

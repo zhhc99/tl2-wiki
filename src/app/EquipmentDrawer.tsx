@@ -85,16 +85,16 @@ export function EquipmentDrawer({
                 ? copy(lang, '计算赌博价格', 'Calculate gambling price', '計算賭博價格')
                 : copy(lang, '无法通过赌博获得', 'Unavailable for gambling', '無法透過賭博取得')}
             </b>
-            <small>
-              {canGamble
-                ? copy(
-                    lang,
-                    '带入类型、物品等级和原有孔数',
-                    'Use its type, item level, and original socket count',
-                    '帶入類型、物品等級與原有孔數',
-                  )
-                : copy(lang, '只能从掉落中获得', 'Only obtainable as a drop', '只能透過掉落取得')}
-            </small>
+            {canGamble && (
+              <small>
+                {copy(
+                  lang,
+                  '带入类型、物品等级和原有孔数',
+                  'Use its type, item level, and original socket count',
+                  '帶入類型、物品等級與原有孔數',
+                )}
+              </small>
+            )}
           </span>
           {canGamble && <ArrowRight size={17} />}
         </button>

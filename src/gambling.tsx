@@ -42,10 +42,8 @@ export const gambleTypeForEquipment = (category: string, subtype: string): Gambl
 }
 
 export const canGambleEquipment = (
-  item: Pick<EquipmentIndexEntry, 'category' | 'subtype' | 'rarity' | 'level'>,
-) =>
-  gambleTypeForEquipment(item.category, item.subtype) !== null &&
-  (item.rarity !== 'legendary' || item.level === 105)
+  item: Pick<EquipmentIndexEntry, 'category' | 'subtype' | 'rarityValue'>,
+) => gambleTypeForEquipment(item.category, item.subtype) !== null && (item.rarityValue ?? 0) > 0
 
 const boundedInteger = (value: string | undefined, fallback: number, min: number, max: number) => {
   const numeric = Number(value)

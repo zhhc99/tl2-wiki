@@ -22,6 +22,7 @@ const equipmentIndex = equipment.map((item) => ({
   category: item.category,
   subtype: item.subtype,
   rarity: item.rarity,
+  rarityValue: item.rarityValue,
   value: item.value,
   level: item.level,
   sockets: item.sockets,

@@ -38,6 +38,7 @@ export interface EquipmentSummary {
   category: ItemCategory
   subtype: string
   rarity: Rarity
+  rarityValue: number | null
   value: number
   level: number
   sockets: number
@@ -52,7 +53,6 @@ export interface EquipmentIndexEntry extends EquipmentSummary {
 }
 
 export interface DbEquipment extends EquipmentSummary {
-  rarityValue: number | null
   requiredLevel: number
   requirements: { stat: Exclude<StatKey, 'none'>; value: number }[]
   speed: number | null
