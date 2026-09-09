@@ -14,6 +14,7 @@ import {
   type Stat,
 } from './model'
 import { copy } from '../i18n'
+import { localizedPath } from '../paths'
 import type { Lang } from '../types'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -99,11 +100,12 @@ export const serializeBuild = async (
     gems,
   })
   const buildCode = `TL2BUILD/1:${bytesToBase64Url(await compressText(json))}`
+  const buildUrl = `https://zhhc99.github.io/tl2-wiki${localizedPath(lang, 'builds')}`
   return copy(
     lang,
-    `Torchlight II Build\n\n在 Build Planner 中导入：\nhttps://zhhc99.github.io/tl2-wiki/#/builds\n\n${buildCode}`,
-    `Torchlight II Build\n\nImport into Build Planner:\nhttps://zhhc99.github.io/tl2-wiki/#/builds\n\n${buildCode}`,
-    `Torchlight II Build\n\n在 Build Planner 中匯入：\nhttps://zhhc99.github.io/tl2-wiki/#/builds\n\n${buildCode}`,
+    `Torchlight II Build\n\n在 Build Planner 中导入：\n${buildUrl}\n\n${buildCode}`,
+    `Torchlight II Build\n\nImport into Build Planner:\n${buildUrl}\n\n${buildCode}`,
+    `Torchlight II Build\n\n在 Build Planner 中匯入：\n${buildUrl}\n\n${buildCode}`,
   )
 }
 

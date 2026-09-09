@@ -22,10 +22,5 @@ fs.writeFileSync(
   path.join(pages, 'sitemap.xml'),
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`,
 )
-fs.writeFileSync(
-  path.join(pages, 'robots.txt'),
-  'User-agent: *\nAllow: /\nSitemap: https://zhhc99.github.io/tl2-wiki/sitemap.xml\n',
-)
-
 for (const name of ['assets', 'data', 'game-icons', 'images', 'favicon.ico'])
   fs.cpSync(path.join(client, name), path.join(routes, name), { recursive: true })

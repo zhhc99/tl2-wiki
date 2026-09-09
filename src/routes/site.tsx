@@ -187,18 +187,10 @@ export default function Site({ loaderData }: Route.ComponentProps) {
   const setLang = (next: Lang) => {
     setSearchOpen(false)
     setLocaleSuggestion(null)
-    localStorage.setItem('tl2-locale', next)
     navigate(`${localizedPath(next, routePath)}${location.search}`)
   }
   useEffect(() => {
-    if (
-      kind !== 'home' ||
-      lang !== 'en' ||
-      routePath ||
-      localStorage.getItem('tl2-locale') ||
-      localStorage.getItem('tl2-locale-prompt-dismissed')
-    )
-      return
+    if (kind !== 'home' || lang !== 'en' || routePath) return
     const browser = navigator.languages.join(' ').toLowerCase()
     if (/zh-(tw|hk|mo)/.test(browser)) setLocaleSuggestion('zh-TW')
     else if (browser.includes('zh')) setLocaleSuggestion('zh-CN')
@@ -322,6 +314,13 @@ export default function Site({ loaderData }: Route.ComponentProps) {
               localizedPath(lang, `classes/${skill.classId}/skills/${slugify(skill.name.en)}`)
             }
             classHref={(classId) => localizedPath(lang, `classes/${classId}`)}
+            heading={
+              kind === 'skill'
+                ? pick(loaderData.selectedSkill!.name, lang)
+                : kind === 'class'
+                  ? pick(data.classes!.find((hero) => hero.id === loaderData.classId)!.name, lang)
+                  : undefined
+            }
           />
         )}
         {kind === 'mechanics' && <MechanicsPage lang={lang} />}
@@ -339,6 +338,7 @@ export default function Site({ loaderData }: Route.ComponentProps) {
             itemHref={(item) => localizedPath(lang, `items/${item.familyId}`)}
             selected={selectedItem}
             selectedVariants={selectedVariants}
+            heading={kind === 'item' ? pick(selectedItem!.name, lang) : undefined}
             onSelect={openItem}
             onClose={closeItem}
             dataReady={kind === 'items' && equipmentIndex.length === loaderData.totalEquipment}
@@ -382,10 +382,7 @@ export default function Site({ loaderData }: Route.ComponentProps) {
         <LocaleSuggestion
           locale={localeSuggestion}
           onAccept={() => setLang(localeSuggestion)}
-          onClose={() => {
-            localStorage.setItem('tl2-locale-prompt-dismissed', '1')
-            setLocaleSuggestion(null)
-          }}
+          onClose={() => setLocaleSuggestion(null)}
         />
       )}
     </div>

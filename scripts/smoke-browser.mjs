@@ -27,9 +27,18 @@ const call = (method, params = {}) =>
     socket.send(JSON.stringify({ id: requestId, method, params }))
   })
 await call('Network.enable')
-const evaluate = async (expression) =>
-  (await call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result
-    .result.value
+await call('Storage.clearDataForOrigin', {
+  origin: new URL(siteUrl).origin,
+  storageTypes: 'local_storage',
+})
+const evaluate = async (expression) => {
+  const response = await call('Runtime.evaluate', {
+    expression,
+    returnByValue: true,
+    awaitPromise: true,
+  })
+  return response.result?.result.value
+}
 const waitFor = async (expression) => {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (await evaluate(expression)) return
@@ -59,7 +68,7 @@ if (fullEquipmentRequests() !== 0)
   throw new Error('Direct equipment route requested the full equipment data on initial load')
 if (
   !(await evaluate(
-    `document.querySelector('.detail-drawer h2').textContent.includes("Nargothrel's Band") && document.querySelector('.data-table') && document.querySelectorAll('link[rel="alternate"]').length === 4`,
+    `document.querySelector('.page-header h1').textContent === "Nargothrel's Band" && document.querySelector('.detail-drawer h2').textContent.includes("Nargothrel's Band") && document.querySelector('.data-table') && document.querySelectorAll('link[rel="alternate"]').length === 4`,
   ))
 )
   throw new Error('Direct equipment route does not render the equipment drawer or SEO links')
@@ -67,7 +76,7 @@ if (
 await visit('/classes/outlander/')
 if (
   !(await evaluate(
-    `document.querySelector('.skill-panel h2').textContent === 'Rapid Fire' && document.querySelector('.skill-table a[href$="/rune-vault/"]') instanceof HTMLAnchorElement`,
+    `document.querySelector('.page-header h1').textContent === 'Outlander' && document.querySelector('.skill-panel h2').textContent === 'Rapid Fire' && document.querySelector('.skill-table a[href$="/rune-vault/"]') instanceof HTMLAnchorElement`,
   ))
 )
   throw new Error('Class route does not render its first skill')
@@ -181,15 +190,47 @@ await waitFor(
 await visit('/zh/classes/berserker/skills/eviscerate/')
 if (
   !(await evaluate(
-    `document.documentElement.lang === 'zh-CN' && document.querySelector('.skill-layout .skill-panel') && document.title.includes('开膛破肚')`,
+    `document.documentElement.lang === 'zh-CN' && document.querySelector('.page-header h1').textContent === '开膛破肚' && document.querySelector('.skill-layout .skill-panel') && document.title.includes('开膛破肚')`,
   ))
 )
   throw new Error('Localized skill page did not hydrate')
 
-await visit('/')
-await evaluate(
-  `localStorage.removeItem('tl2-locale'); localStorage.removeItem('tl2-locale-prompt-dismissed')`,
+for (const [path, expectedUrl] of [
+  ['/builds/', 'https://zhhc99.github.io/tl2-wiki/builds/'],
+  ['/zh/builds/', 'https://zhhc99.github.io/tl2-wiki/zh/builds/'],
+  ['/zh-tw/builds/', 'https://zhhc99.github.io/tl2-wiki/zh-tw/builds/'],
+]) {
+  await visit(path)
+  await evaluate(
+    `Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (text) => { window.__tl2BuildText = text; return Promise.resolve() } } })`,
+  )
+  await evaluate(`document.querySelector('.export-build').click()`)
+  await waitFor(`Boolean(window.__tl2BuildText)`)
+  if (
+    !(await evaluate(
+      `window.__tl2BuildText.includes(${JSON.stringify(`\n${expectedUrl}\n`)}) && !window.__tl2BuildText.includes('#/builds')`,
+    ))
+  )
+    throw new Error(`Build export did not use the localized route: ${path}`)
+}
+
+await evaluate(`localStorage.setItem('tl2-build', JSON.stringify({
+  classId: 'berserker',
+  level: 100,
+  allocated: { str: 0, dex: 0, foc: 0, vit: 0 },
+  loadout: { main: '-2085670950870325954' },
+  socketLoadout: { main: ['6633021093315468842', '6633021093315468842'] }
+}))`)
+await visit('/builds/')
+await waitFor(`Boolean(document.querySelector('.socketed-gem-list article'))`)
+if (
+  !(await evaluate(
+    `document.querySelectorAll('.socketed-gem-list article').length === 1 && document.querySelector('.socketed-gems header strong').textContent === '2' && document.querySelector('.socketed-gem-list article').textContent.includes('2 socketables')`,
+  ))
 )
+  throw new Error('Identical socketables with the same active effect were not grouped')
+
+await visit('/')
 const userAgent = await evaluate(`navigator.userAgent`)
 await call('Network.setUserAgentOverride', {
   userAgent,
@@ -198,12 +239,23 @@ await call('Network.setUserAgentOverride', {
 await visit('/?locale-smoke=1')
 await waitFor(`Boolean(document.querySelector('.locale-suggestion'))`)
 await evaluate(`document.querySelector('.locale-suggestion-close').click()`)
-if (
-  !(await evaluate(
-    `!document.querySelector('.locale-suggestion') && localStorage.getItem('tl2-locale-prompt-dismissed') === '1'`,
-  ))
-)
+if (await evaluate(`Boolean(document.querySelector('.locale-suggestion'))`))
   throw new Error('Locale suggestion is not dismissible')
+
+await visit('/?locale-smoke=2')
+await waitFor(`Boolean(document.querySelector('.locale-suggestion'))`)
+await evaluate(`document.querySelector('.locale-suggestion-action').click()`)
+await waitFor(
+  `location.pathname.endsWith('/zh/') && document.readyState === 'complete' && Boolean(document.querySelector('main'))`,
+)
+await waitFor(
+  `Object.keys(document.querySelector('main')).some((key) => key.startsWith('__reactProps'))`,
+)
+if (!(await evaluate(`document.documentElement.lang === 'zh-CN'`)))
+  throw new Error('Locale suggestion did not navigate to the suggested locale')
+
+await visit('/?locale-smoke=3')
+await waitFor(`Boolean(document.querySelector('.locale-suggestion'))`)
 
 socket.close()
 console.log('Browser smoke test passed')

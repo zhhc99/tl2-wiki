@@ -5,7 +5,7 @@ import { NumberInput } from '../NumberInput'
 import { SelectControl } from '../SelectControl'
 import { NgBadge } from '../WikiUi'
 import type { Lang } from '../types'
-import type { PlannerSnapshot } from './calculations'
+import type { ActiveSocketRow, PlannerSnapshot } from './calculations'
 import {
   buildSocketCount,
   classBases,
@@ -39,6 +39,21 @@ export interface BuildWorkspaceProps {
   onRemoveItem: (slot: Slot) => void
 }
 
+const groupSocketRows = (rows: ActiveSocketRow[]) => {
+  const groups: { row: ActiveSocketRow; count: number }[] = []
+  for (const row of rows) {
+    const group = groups.find(
+      ({ row: current }) =>
+        current.gem.id === row.gem.id &&
+        current.effects.length === row.effects.length &&
+        current.effects.every((effect, index) => effect === row.effects[index]),
+    )
+    if (group) group.count += 1
+    else groups.push({ row, count: 1 })
+  }
+  return groups
+}
+
 export function BuildWorkspace({
   lang,
   classes,
@@ -59,6 +74,7 @@ export function BuildWorkspace({
   onOpenPicker,
   onRemoveItem,
 }: BuildWorkspaceProps) {
+  const socketGroups = groupSocketRows(planner.activeSocketRows)
   return (
     <div className="content page-body build-page">
       <div className="build-toolbar">
@@ -354,18 +370,19 @@ export function BuildWorkspace({
             <strong>{planner.activeSocketRows.length}</strong>
           </header>
           <div className="socketed-gem-list">
-            {planner.activeSocketRows.map((row) => (
-              <article key={`${row.slot}-${row.index}`}>
+            {socketGroups.map(({ row, count }) => (
+              <article key={`${row.gem.id}-${row.slot}-${row.index}`}>
                 <img src={asset(row.gem.iconPath)} alt="" />
                 <div>
                   <span>
-                    {slotName(row.slot, lang)} ·{' '}
-                    {copy(
-                      lang,
-                      `第 ${row.index + 1} 孔`,
-                      `Socket ${row.index + 1}`,
-                      `第 ${row.index + 1} 孔`,
-                    )}
+                    {count > 1
+                      ? copy(lang, `${count} 个镶嵌物`, `${count} socketables`, `${count} 個鑲嵌物`)
+                      : `${slotName(row.slot, lang)} · ${copy(
+                          lang,
+                          `第 ${row.index + 1} 孔`,
+                          `Socket ${row.index + 1}`,
+                          `第 ${row.index + 1} 孔`,
+                        )}`}
                   </span>
                   <b>
                     {pick(row.gem.name, lang)} <NgBadge tier={row.gem.ngTier} />

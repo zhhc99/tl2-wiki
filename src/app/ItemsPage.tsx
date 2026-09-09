@@ -28,6 +28,7 @@ export function ItemsPage({
   itemHref,
   selected,
   selectedVariants,
+  heading,
   onSelect,
   onClose,
   dataReady = true,
@@ -41,6 +42,7 @@ export function ItemsPage({
   itemHref: (item: EquipmentSummary) => string
   selected: DbEquipment | null
   selectedVariants: DbEquipment[]
+  heading?: string
   onSelect: (item: EquipmentSummary) => void
   onClose: () => void
   dataReady?: boolean
@@ -93,7 +95,7 @@ export function ItemsPage({
               : 'all'
   return (
     <>
-      <PageHeader section={tr(lang, 'navItems')} title={tr(lang, 'itemsTitle')}>
+      <PageHeader section={tr(lang, 'navItems')} title={heading ?? tr(lang, 'itemsTitle')}>
         {copy(
           lang,
           '按名称、类型、稀有度、等级或物品效果查找装备。',

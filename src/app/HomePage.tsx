@@ -82,7 +82,7 @@ export function HomePage({
             <p className="home-lead">
               {copy(
                 lang,
-                '查职业技能、装备属性、技能书和相位兽挑战。',
+                '查询职业技能、装备属性、技能书和相位兽挑战。',
                 'Look up class skills, equipment, spell books and Phase Beast challenges.',
                 '查詢職業技能、裝備屬性、技能書與相位獸挑戰。',
               )}
