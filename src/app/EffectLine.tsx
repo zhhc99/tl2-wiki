@@ -53,6 +53,12 @@ export const graphValue = (graph: SkillGraph | undefined, level: number) => {
   return previousY + ((y - previousY) * (level - previousX)) / (x - previousX)
 }
 
+const isTimedRecharge = (effect: DisplayEffect) =>
+  effect.scalingGraph != null &&
+  effect.duration != null &&
+  effect.duration > 0 &&
+  (effect.type === 'HP RECHARGE PLAYER' || effect.type === 'MANA RECHARGE PLAYER')
+
 const effectNumber = (
   effect: DisplayEffect,
   value: number | null,
@@ -65,10 +71,14 @@ const effectNumber = (
     ? graphValue(skillGraphs[effect.scalingGraph], playerLevel)
     : null
   let result = scale == null ? value : (scale * value) / 100
-  if (scale != null && effect.type === 'DAMAGE') result = Math.ceil(Math.abs(result))
-  else if (scale != null && effect.type === 'ARMOR BONUS') result = Math.floor(Math.abs(result))
-  else result = Math.abs(result)
-  if (overTime && effect.duration) result = Math.ceil(result) * effect.duration
+  const rechargeDuration = overTime && isTimedRecharge(effect) ? effect.duration : null
+  if (rechargeDuration != null) result = Math.ceil(Math.abs(result) * rechargeDuration * 0.016)
+  else {
+    if (scale != null && effect.type === 'DAMAGE') result = Math.ceil(Math.abs(result))
+    else if (scale != null && effect.type === 'ARMOR BONUS') result = Math.floor(Math.abs(result))
+    else result = Math.abs(result)
+    if (overTime && effect.duration) result = Math.ceil(result) * effect.duration
+  }
   const precision = Math.max(0, effect.precision ?? 0)
   return Number(result.toFixed(precision)).toLocaleString('en-US', {
     maximumFractionDigits: precision,
@@ -114,7 +124,7 @@ const renderSkillEffect = (
   const overTime =
     effect.duration != null &&
     effect.duration > 0 &&
-    (effect.type === 'DAMAGE' || effect.type === 'DAMAGE CHANCE')
+    (effect.type === 'DAMAGE' || effect.type === 'DAMAGE CHANCE' || isTimedRecharge(effect))
   return pick(effect.template, lang)
     .replaceAll('[VALUE_OT]', effectRange(effect, playerLevel, skillGraphs, true) ?? '—')
     .replaceAll('[VALUE1ASDURATION]', effectDuration(Math.abs(effect.min ?? 0), lang))
