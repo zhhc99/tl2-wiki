@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react'
 import { copy, pick, tr } from '../i18n'
 import type { DisplayEffect, SkillGraph, SkillGraphs } from '../domain'
 import { localText, titleCase } from './labels'
@@ -152,7 +153,30 @@ export function EffectLine({
   playerLevel?: number
   skillGraphs?: SkillGraphs
 }) {
-  if (effect.text)
+  if (effect.text) {
+    if (effect.upgradeEffects)
+      return (
+        <li className="upgrade-effect">
+          <details>
+            <summary>
+              <strong>{pick(effect.text, lang)}</strong>
+              <ChevronDown size={18} aria-hidden="true" />
+            </summary>
+            <div className="upgrade-effect-details">
+              <small>{copy(lang, '升级后获得', 'Granted after upgrading', '升級後獲得')}</small>
+              <ul className="display-effect-list">
+                {effect.upgradeEffects.map((upgrade, index) => (
+                  <EffectLine
+                    key={`${upgrade.type}-${upgrade.name}-${index}`}
+                    effect={upgrade}
+                    lang={lang}
+                  />
+                ))}
+              </ul>
+            </div>
+          </details>
+        </li>
+      )
     return (
       <li>
         {pieces != null && (
@@ -165,6 +189,7 @@ export function EffectLine({
         </span>
       </li>
     )
+  }
   const rendered = renderSkillEffect(effect, lang, playerLevel, skillGraphs)
   if (rendered)
     return (

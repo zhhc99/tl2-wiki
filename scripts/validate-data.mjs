@@ -83,7 +83,7 @@ assert(
   'Search index is stale or has invalid fields',
 )
 
-assert(meta.version === 2, 'Unexpected public data version')
+assert(meta.version === 3, 'Unexpected public data version')
 assert(
   equipment.length === 4029 && equipment.length === meta.counts.equipment,
   'Unexpected equipment count',
@@ -106,6 +106,24 @@ assert(
 assert(
   equipment.reduce((sum, item) => sum + item.effects.length, 0) === 6965,
   'Unexpected equipment effect count',
+)
+const upgradeEffects = equipment.flatMap((item) =>
+  item.effects.flatMap((effect) => effect.upgradeEffects || []),
+)
+assert(
+  upgradeEffects.length === 145 && upgradeEffects.length === meta.counts.itemEffectUpgrades,
+  'Unexpected equipment upgrade effect count',
+)
+assert(
+  equipment.every((item) =>
+    item.effects.every(
+      (effect) =>
+        effect.type !== 'ADD TRIGGERABLE' ||
+        (effect.upgradeEffects?.length &&
+          effect.upgradeEffects.every((upgrade) => local(upgrade.text))),
+    ),
+  ),
+  'Invalid equipment upgrade effects',
 )
 assert(
   equipment

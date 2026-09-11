@@ -25,6 +25,7 @@ export interface DisplayEffect {
   precision?: number
   scalingGraph?: string | null
   socketTargets?: ('weapon' | 'armor')[]
+  upgradeEffects?: DisplayEffect[]
 }
 
 export interface SetBonus extends DisplayEffect {
@@ -173,6 +174,7 @@ export interface DbMeta {
   counts: {
     equipment: number
     itemEffects: number
+    itemEffectUpgrades: number
     spellBooks: number
     classes: number
     skillTrees: number

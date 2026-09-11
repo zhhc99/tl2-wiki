@@ -12,7 +12,7 @@ const iconOutputDir = resolve(projectDir, 'public/game-icons')
 const metadata = Object.fromEntries(
   query('SELECT key,value FROM metadata').map((row) => [row.key, row.value]),
 )
-if (metadata.schema_version !== '4')
+if (metadata.schema_version !== '5')
   throw new Error(`Unsupported tl2-db schema: ${metadata.schema_version}`)
 
 const clean = (value) => String(value ?? '').trim()
@@ -64,6 +64,13 @@ const equipmentEffects = keyedRows(
 `,
   'record_id',
 )
+const equipmentEffectUpgradeRows = query(`
+  SELECT * FROM wiki_equipment_effect_upgrades ORDER BY record_id,effect_ordinal,ordinal
+`)
+const equipmentEffectUpgrades = groupBy(
+  equipmentEffectUpgradeRows,
+  (row) => `${row.record_id}:${row.effect_ordinal}`,
+)
 const effectTargets = groupBy(
   query(`
   SELECT * FROM wiki_equipment_effect_targets
@@ -102,14 +109,20 @@ const equipmentRows = query(`
 `)
 const equipment = equipmentRows.map((row) => {
   const set = row.set_name ? sets.get(clean(row.set_name).toLowerCase()) : null
-  const effects = (equipmentEffects.get(row.record_id) || []).map((effect) =>
-    displayEffect(
-      effect,
-      (effectTargets.get(`${row.record_id}:${effect.ordinal}`) || []).map(
-        (target) => target.target,
+  const effects = (equipmentEffects.get(row.record_id) || []).map((effect) => {
+    const upgradeEffects = (
+      equipmentEffectUpgrades.get(`${row.record_id}:${effect.ordinal}`) || []
+    ).map((upgrade) => displayEffect(upgrade))
+    return {
+      ...displayEffect(
+        effect,
+        (effectTargets.get(`${row.record_id}:${effect.ordinal}`) || []).map(
+          (target) => target.target,
+        ),
       ),
-    ),
-  )
+      ...(upgradeEffects.length ? { upgradeEffects } : {}),
+    }
+  })
   return {
     id: row.record_id,
     familyId: row.family_id,
@@ -316,10 +329,11 @@ const phaseBeasts = Object.entries(phaseZones).map(([actZone, zone]) => {
 })
 
 const meta = {
-  version: 2,
+  version: 3,
   counts: {
     equipment: equipment.length,
     itemEffects: equipment.reduce((sum, item) => sum + item.effects.length, 0),
+    itemEffectUpgrades: equipmentEffectUpgradeRows.length,
     spellBooks: spellBooks.length,
     classes: classes.length,
     skillTrees: classes.reduce((sum, hero) => sum + hero.trees.length, 0),

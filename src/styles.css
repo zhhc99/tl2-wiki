@@ -240,6 +240,7 @@ td { padding: 14px 15px; border-top: 1px solid var(--line); font-size: 14px; }
 .display-effect-list li em { color: var(--accent); font-size: 13px; font-style: normal; font-weight: 750; }
 .display-effect-list li small { color: var(--muted); font-size: 11px; }
 .display-effect-list .piece-count { min-width: 48px; color: #4d6953; font-size: 11px; }
+.display-effect-list li.upgrade-effect { padding:0;display:block; }.upgrade-effect summary { padding:10px 11px;display:flex;align-items:center;gap:9px;cursor:pointer;list-style:none; }.upgrade-effect summary::-webkit-details-marker { display:none; }.upgrade-effect summary strong { min-width:0;flex:1; }.upgrade-effect summary svg { flex:none;color:var(--muted);transition:transform .16s ease; }.upgrade-effect details[open] summary svg { transform:rotate(180deg); }.upgrade-effect-details { padding:10px 11px 11px;border-top:1px solid var(--line);background:var(--surface); }.upgrade-effect-details > small { display:block;margin-bottom:7px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase; }
 /* Build planner */
 .build-toolbar { margin-bottom: 15px; padding: 12px; display: flex; align-items: end; gap: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
 .planner-select { min-width: 190px; }.level-input { display: grid; gap: 4px; }.level-input span,.gamble-controls > label > span,.gamble-item-field > span { color: var(--muted); font-size: 12px; font-weight: 700; }
