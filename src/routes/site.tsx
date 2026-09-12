@@ -13,21 +13,19 @@ import { SearchOverlay } from '../app/SearchOverlay'
 import { SpellsPage } from '../app/SpellsPage'
 import type { Page } from '../app/navigation'
 import {
-  equipmentFamily,
-  type ClassSkillSummary,
   type DbClass,
   type DbClassSkill,
   type DbEquipment,
   type EquipmentIndexEntry,
   type EquipmentSummary,
   type SearchIndexEntry,
-  type SiteData,
   type SkillGraphs,
 } from '../domain'
 import { GamblingPage, canGambleEquipment, gambleTypeForEquipment } from '../gambling'
 import { copy, pick } from '../i18n'
 import { localizedPath, locales, pagePath, parseLocalizedPath, slugify } from '../paths'
 import { BuildsPage } from '../planners'
+import { createPageData, type PageData } from '../site-data'
 import { loadPage } from '../site-data.server'
 import type { Lang } from '../types'
 
@@ -43,15 +41,23 @@ const descriptions: Record<Lang, string> = {
   'zh-TW': 'Torchlight II 職業、機制、裝備、技能書與相位獸資料。',
 }
 
-function seo(data: Awaited<ReturnType<typeof loader>>) {
+function seo(data: PageData) {
   const entity =
-    data.itemFamily?.[0]?.name ?? (data.kind === 'skill' ? data.selectedSkill?.name : undefined)
+    data.kind === 'item'
+      ? data.itemFamily[0]?.name
+      : data.kind === 'skill'
+        ? data.selectedSkill.name
+        : undefined
   const section =
     data.kind === 'item'
       ? copy(data.lang, '装备', 'Equipment', '裝備')
       : data.kind === 'skill'
         ? copy(data.lang, '职业技能', 'Class skill', '職業技能')
         : undefined
+  const hero =
+    data.kind === 'classes' || data.kind === 'class' || data.kind === 'skill'
+      ? data.data.classes.find((entry) => entry.id === data.classId)
+      : undefined
   const pageTitles = {
     home: 'TL2 Wiki',
     classes: copy(data.lang, '职业 · TL2 Wiki', 'Classes · TL2 Wiki', '職業 · TL2 Wiki'),
@@ -66,23 +72,21 @@ function seo(data: Awaited<ReturnType<typeof loader>>) {
     gambling: copy(data.lang, '赌博 · TL2 Wiki', 'Gambling · TL2 Wiki', '賭博 · TL2 Wiki'),
     spells: copy(data.lang, '技能书 · TL2 Wiki', 'Spell Books · TL2 Wiki', '技能書 · TL2 Wiki'),
     phases: copy(data.lang, '相位兽 · TL2 Wiki', 'Phase Beasts · TL2 Wiki', '相位獸 · TL2 Wiki'),
-    class: data.classId
-      ? `${pick(data.data.classes!.find((hero) => hero.id === data.classId)!.name, data.lang)} · TL2 Wiki`
-      : 'TL2 Wiki',
+    class: data.kind === 'class' && hero ? `${pick(hero.name, data.lang)} · TL2 Wiki` : 'TL2 Wiki',
     item: '',
     skill: '',
   }
   const title = entity
     ? `${pick(entity, data.lang)} · ${section} · TL2 Wiki`
     : pageTitles[data.kind]
-  const hero = data.data.classes?.find((entry) => entry.id === data.classId)
-  const description = data.itemFamily?.[0]?.description
-    ? pick(data.itemFamily[0].description, data.lang)
-    : data.kind === 'skill' && data.selectedSkill
-      ? pick(data.selectedSkill.description, data.lang)
-      : hero
-        ? pick(hero.description, data.lang)
-        : descriptions[data.lang]
+  const description =
+    data.kind === 'item' && data.itemFamily[0]?.description
+      ? pick(data.itemFamily[0].description, data.lang)
+      : data.kind === 'skill'
+        ? pick(data.selectedSkill.description, data.lang)
+        : hero
+          ? pick(hero.description, data.lang)
+          : descriptions[data.lang]
   return { title, description }
 }
 
@@ -120,16 +124,6 @@ const loadEquipmentIndex = () => loadJson<EquipmentIndexEntry[]>('equipment-inde
 const loadSearchIndex = () => loadJson<SearchIndexEntry[]>('search-index')
 const loadClasses = () => loadJson<DbClass[]>('classes')
 
-const skillSummary = ({
-  id,
-  classId,
-  treeId,
-  name,
-  kind,
-  level,
-  iconPath,
-}: DbClassSkill): ClassSkillSummary => ({ id, classId, treeId, name, kind, level, iconPath })
-
 async function loadClientEquipmentData() {
   const [equipment, classes] = await Promise.all([loadEquipment(), loadClasses()])
   return { equipment, classes }
@@ -142,57 +136,16 @@ const loadClientClassData = async () =>
     loadJson<SkillGraphs>('skill-graphs'),
   ])
 
-function cachedClientPage(pathname: string): Awaited<ReturnType<typeof loader>> | undefined {
-  const { lang, routePath } = parseLocalizedPath(pathname)
-  const equipmentCache = cachedJson<DbEquipment[]>('equipment')
-  const equipmentIndexCache = cachedJson<EquipmentIndexEntry[]>('equipment-index')
-  const classSkillsCache = cachedJson<DbClassSkill[]>('class-skills')
-  const classesCache = cachedJson<DbClass[]>('classes')
-  const skillGraphsCache = cachedJson<SkillGraphs>('skill-graphs')
-  const itemMatch = routePath.match(/^items\/([^/]+)$/)
-  if (itemMatch && equipmentCache && classesCache) {
-    const itemFamily = equipmentFamily(equipmentCache, itemMatch[1])
-    if (!itemFamily.length) return
-    return {
-      kind: 'item',
-      lang,
-      routePath,
-      data: { classes: classesCache },
-      itemFamily,
-      totalEquipment: equipmentCache.length,
-    }
-  }
-  if (routePath === 'items' && equipmentIndexCache && classesCache)
-    return {
-      kind: 'items',
-      lang,
-      routePath,
-      data: { classes: classesCache },
-      totalEquipment: equipmentIndexCache.length,
-      equipmentRows: equipmentIndexCache
-        .slice(0, 40)
-        .map(({ searchText: _searchText, ...item }) => item),
-    }
-  if (!classSkillsCache || !classesCache || !skillGraphsCache) return
-  const skillMatch = routePath.match(/^classes\/([^/]+)\/skills\/([^/]+)$/)
-  const classMatch = routePath.match(/^classes\/([^/]+)$/)
-  const classId =
-    skillMatch?.[1] ?? classMatch?.[1] ?? (routePath === 'classes' ? classesCache[0].id : '')
-  if (!classId) return
-  const skills = classSkillsCache.filter((skill) => skill.classId === classId)
-  const selectedSkill = skillMatch
-    ? skills.find((skill) => slugify(skill.name.en) === skillMatch[2])
-    : skills[0]
-  if (!classesCache.some((hero) => hero.id === classId) || !selectedSkill) return
-  return {
-    kind: skillMatch ? 'skill' : classMatch ? 'class' : 'classes',
-    lang,
-    routePath,
-    data: { classes: classesCache, skillGraphs: skillGraphsCache },
-    skills: skills.map(skillSummary),
-    selectedSkill,
-    classId,
-  }
+function cachedClientPage(pathname: string): PageData | undefined {
+  const page = createPageData(pathname, {
+    equipment: cachedJson<DbEquipment[]>('equipment'),
+    equipmentIndex: cachedJson<EquipmentIndexEntry[]>('equipment-index'),
+    classes: cachedJson<DbClass[]>('classes'),
+    classSkills: cachedJson<DbClassSkill[]>('class-skills'),
+    skillGraphs: cachedJson<SkillGraphs>('skill-graphs'),
+  })
+  if (!page) return
+  return ['items', 'item', 'classes', 'class', 'skill'].includes(page.kind) ? page : undefined
 }
 
 export async function clientLoader({ request, serverLoader }: Route.ClientLoaderArgs) {
@@ -202,25 +155,16 @@ export async function clientLoader({ request, serverLoader }: Route.ClientLoader
   try {
     return await serverLoader()
   } catch (error) {
-    const { lang, routePath } = parseLocalizedPath(pathname)
-    const slug = routePath.match(/^items\/([^/]+)$/)?.[1]
-    if (!slug) throw error
+    if (!parseLocalizedPath(pathname).routePath.match(/^items\/[^/]+$/)) throw error
     const { equipment, classes } = await loadClientEquipmentData()
-    const itemFamily = equipmentFamily(equipment, slug)
-    if (!itemFamily.length) throw error
-    return {
-      kind: 'item' as const,
-      lang,
-      routePath,
-      data: { classes },
-      itemFamily,
-      totalEquipment: equipment.length,
-    }
+    const page = createPageData(pathname, { equipment, classes })
+    if (!page || page.kind !== 'item') throw error
+    return page
   }
 }
 
 export default function Site({ loaderData }: Route.ComponentProps) {
-  const { kind, lang, routePath, data } = loaderData
+  const { kind, lang, routePath } = loaderData
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -244,10 +188,12 @@ export default function Site({ loaderData }: Route.ComponentProps) {
   const page = (
     kind === 'item' ? 'items' : kind === 'skill' || kind === 'class' ? 'classes' : kind
   ) as Page
+  const totalEquipment =
+    loaderData.kind === 'items' || loaderData.kind === 'item' ? loaderData.totalEquipment : 0
   useEffect(() => {
-    if (kind !== 'items' || equipmentIndex.length === loaderData.totalEquipment) return
+    if (kind !== 'items' || equipmentIndex.length === totalEquipment) return
     requestEquipmentIndex()
-  }, [kind, equipmentIndex.length, loaderData.totalEquipment, requestEquipmentIndex])
+  }, [kind, equipmentIndex.length, totalEquipment, requestEquipmentIndex])
   useEffect(() => {
     if (kind === 'items') loadClientEquipmentData().catch(() => undefined)
     if (kind === 'classes' || kind === 'class' || kind === 'skill')
@@ -324,15 +270,21 @@ export default function Site({ loaderData }: Route.ComponentProps) {
     )
   }
   const canonicalRoute = localizedPath(lang, routePath)
-  const selectedVariants = loaderData.itemFamily ?? []
+  const selectedVariants = loaderData.kind === 'item' ? loaderData.itemFamily : []
   const listedEquipment =
     equipmentIndex.length > 0
       ? equipmentIndex
-      : kind === 'item'
+      : loaderData.kind === 'item'
         ? selectedVariants
-        : (loaderData.equipmentRows ?? [])
+        : loaderData.kind === 'items'
+          ? loaderData.equipmentRows
+          : []
+  const selectedClass =
+    loaderData.kind === 'class'
+      ? loaderData.data.classes.find((hero) => hero.id === loaderData.classId)
+      : undefined
   const selectedItem =
-    kind === 'item'
+    loaderData.kind === 'item'
       ? (selectedVariants.find(
           (item) => item.id === (location.state as { itemId?: string } | null)?.itemId,
         ) ?? selectedVariants[0])
@@ -378,63 +330,65 @@ export default function Site({ loaderData }: Route.ComponentProps) {
         </div>
       )}
       <main>
-        {kind === 'home' && (
+        {loaderData.kind === 'home' && (
           <HomePage
             lang={lang}
             go={go}
             onSearch={openSearch}
             onClass={openClass}
-            data={data as SiteData}
+            data={loaderData.data}
           />
         )}
-        {(kind === 'classes' || kind === 'class' || kind === 'skill') && (
+        {(loaderData.kind === 'classes' ||
+          loaderData.kind === 'class' ||
+          loaderData.kind === 'skill') && (
           <ClassesPage
             lang={lang}
-            classId={loaderData.classId!}
-            classes={data.classes!}
-            skills={loaderData.skills!}
-            selectedSkill={loaderData.selectedSkill!}
-            skillGraphs={data.skillGraphs!}
+            classId={loaderData.classId}
+            classes={loaderData.data.classes}
+            skills={loaderData.skills}
+            selectedSkill={loaderData.selectedSkill}
+            skillGraphs={loaderData.data.skillGraphs}
             skillHref={(skill) =>
               localizedPath(lang, `classes/${skill.classId}/skills/${slugify(skill.name.en)}`)
             }
             classHref={(classId) => localizedPath(lang, `classes/${classId}`)}
             documentTitle={
-              kind === 'skill'
-                ? pick(loaderData.selectedSkill!.name, lang)
-                : kind === 'class'
-                  ? pick(data.classes!.find((hero) => hero.id === loaderData.classId)!.name, lang)
+              loaderData.kind === 'skill'
+                ? pick(loaderData.selectedSkill.name, lang)
+                : loaderData.kind === 'class'
+                  ? selectedClass
+                    ? pick(selectedClass.name, lang)
+                    : undefined
                   : undefined
             }
           />
         )}
         {kind === 'mechanics' && <MechanicsPage lang={lang} />}
-        {(kind === 'items' || kind === 'item') && (
+        {(loaderData.kind === 'items' || loaderData.kind === 'item') && (
           <ItemsPage
             lang={lang}
             items={listedEquipment}
-            classes={data.classes!}
-            searchRequest={
-              new URLSearchParams(location.search).get('q')
-                ? { query: new URLSearchParams(location.search).get('q')!, key: 1 }
-                : null
-            }
+            classes={loaderData.data.classes}
+            searchRequest={new URLSearchParams(location.search).get('q')}
             onGamble={openGambling}
             itemHref={(item) => localizedPath(lang, `items/${item.familyId}`)}
             selected={selectedItem}
             selectedVariants={selectedVariants}
-            documentTitle={kind === 'item' ? pick(selectedItem!.name, lang) : undefined}
+            documentTitle={
+              loaderData.kind === 'item' && selectedItem ? pick(selectedItem.name, lang) : undefined
+            }
             onSelect={openItem}
             onClose={closeItem}
-            dataReady={kind === 'items' && equipmentIndex.length === loaderData.totalEquipment}
-            totalCount={loaderData.totalEquipment}
+            dataReady={kind === 'items' && equipmentIndex.length === totalEquipment}
+            totalCount={totalEquipment}
           />
         )}
-        {kind === 'builds' && (
+        {loaderData.kind === 'builds' && (
           <BuildsPage
             lang={lang}
             items={fullEquipment}
-            classes={data.classes!}
+            classes={loaderData.data.classes}
             onLoadItems={requestFullEquipment}
           />
         )}
@@ -446,8 +400,12 @@ export default function Site({ loaderData }: Route.ComponentProps) {
             search={location.search}
           />
         )}
-        {kind === 'spells' && <SpellsPage lang={lang} spells={data.spellBooks!} />}
-        {kind === 'phases' && <PhasesPage lang={lang} phaseBeasts={data.phaseBeasts!} />}
+        {loaderData.kind === 'spells' && (
+          <SpellsPage lang={lang} spells={loaderData.data.spellBooks} />
+        )}
+        {loaderData.kind === 'phases' && (
+          <PhasesPage lang={lang} phaseBeasts={loaderData.data.phaseBeasts} />
+        )}
       </main>
       <Footer lang={lang} href={href} />
       {searchOpen && searchData && (

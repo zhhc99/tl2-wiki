@@ -14,7 +14,6 @@ import {
 import { copy, pick, tr, type UIKey } from '../i18n'
 import { SelectControl } from '../SelectControl'
 import type { ItemCategory, Lang } from '../types'
-import type { ItemSearchRequest } from './navigation'
 import { EquipmentDrawer } from './EquipmentDrawer'
 import { classRequirementName, rarityName, subtypeName } from './labels'
 import { Loading, NgBadge, PageHeader } from '../WikiUi'
@@ -37,7 +36,7 @@ export function ItemsPage({
   lang: Lang
   items: EquipmentSummary[]
   classes: DbClass[]
-  searchRequest: ItemSearchRequest | null
+  searchRequest: string | null
   onGamble: (item: EquipmentSummary) => void
   itemHref: (item: EquipmentSummary) => string
   selected: DbEquipment | null
@@ -58,7 +57,7 @@ export function ItemsPage({
     setCategory('all')
     setRarity('all')
     setLevel('all')
-    setQuery(searchRequest.query)
+    setQuery(searchRequest)
   }, [searchRequest])
   const filtered = useMemo(
     () =>

@@ -1,7 +1,7 @@
 import { ArrowRight, BookOpen, Hammer, Search, SlidersHorizontal, Swords } from 'lucide-react'
 import { classPresentation, statInfo } from '../data'
 import { pick, copy, tr } from '../i18n'
-import type { SiteData } from '../domain'
+import type { DbClass, DbMeta } from '../domain'
 import type { Lang } from '../types'
 import type { Navigate, Page } from './navigation'
 import { originalName, SectionTitle, StatPill } from '../WikiUi'
@@ -19,7 +19,7 @@ export function HomePage({
   go: Navigate
   onSearch: () => void
   onClass: (id: string) => void
-  data: SiteData
+  data: { classes: DbClass[]; meta: DbMeta }
 }) {
   const counts = data.meta.counts
   const links = [

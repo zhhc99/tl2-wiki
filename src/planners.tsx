@@ -19,15 +19,14 @@ import {
   type TransferDialogState,
 } from './planner/PlannerDialogs'
 import {
-  buildSocketCount,
-  emptyLoadout,
-  isClassCompatible,
-  slots,
-  twoHanded,
+  changeClass,
+  classBases,
+  emptyBuild,
+  equipItem,
+  normalizeBuild,
+  removeItem as removeBuildItem,
   type BuildState,
   type Slot,
-  type SocketLoadout,
-  type Stat,
 } from './planner/model'
 import { parseBuild, serializeBuild } from './planner/transfer'
 
@@ -42,16 +41,7 @@ export function BuildsPage({
   classes: DbClass[]
   onLoadItems: () => void
 }) {
-  const [classId, setClassId] = useState('berserker')
-  const [level, setLevel] = useState(100)
-  const [allocated, setAllocated] = useState<Record<Stat, number>>({
-    str: 0,
-    dex: 0,
-    foc: 0,
-    vit: 0,
-  })
-  const [loadout, setLoadout] = useState<Record<Slot, string | null>>(emptyLoadout)
-  const [socketLoadout, setSocketLoadout] = useState<SocketLoadout>({})
+  const [build, setBuild] = useState<BuildState>(emptyBuild)
   const [picker, setPicker] = useState<Slot | null>(null)
   const [gemPicker, setGemPicker] = useState<{ slot: Slot; index: number } | null>(null)
   const [previewSlot, setPreviewSlot] = useState<Slot | null>(null)
@@ -61,93 +51,56 @@ export function BuildsPage({
   const [restored, setRestored] = useState(false)
   const [transfer, setTransfer] = useState<TransferDialogState | null>(null)
   const [notice, setNotice] = useState('')
+  const byId = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
 
   useEffect(() => {
+    if (restored) return
     try {
       const saved = JSON.parse(localStorage.getItem('tl2-build') || 'null')
       if (saved) {
-        setClassId(saved.classId || 'berserker')
-        setLevel(saved.level || 100)
-        setAllocated((current) => ({ ...current, ...saved.allocated }))
-        setLoadout({ ...emptyLoadout(), ...saved.loadout })
-        setSocketLoadout(saved.socketLoadout || {})
-        if (Object.values(saved.loadout || {}).some(Boolean)) onLoadItems()
+        const initial = emptyBuild()
+        const restoredBuild: BuildState = {
+          ...initial,
+          classId:
+            typeof saved.classId === 'string' && Object.hasOwn(classBases, saved.classId)
+              ? saved.classId
+              : initial.classId,
+          level: typeof saved.level === 'number' ? saved.level : initial.level,
+          allocated: { ...initial.allocated, ...saved.allocated },
+          loadout: { ...initial.loadout, ...saved.loadout },
+          socketLoadout: saved.socketLoadout || {},
+        }
+        setBuild(restoredBuild)
+        if (Object.values(restoredBuild.loadout).some(Boolean)) onLoadItems()
       }
     } catch {
       /* ignore invalid old data */
-    } finally {
-      setRestored(true)
     }
-  }, [onLoadItems])
+    setRestored(true)
+  }, [onLoadItems, restored])
+  useEffect(() => {
+    if (!restored || !items.length) return
+    setBuild((current) => normalizeBuild(current, byId))
+  }, [byId, items.length, restored])
   useEffect(() => {
     if (restored)
       try {
-        localStorage.setItem(
-          'tl2-build',
-          JSON.stringify({ classId, level, allocated, loadout, socketLoadout }),
-        )
+        localStorage.setItem('tl2-build', JSON.stringify(build))
       } catch {
         /* storage may be unavailable */
       }
-  }, [classId, level, allocated, loadout, socketLoadout, restored])
+  }, [build, restored])
   useEffect(() => {
     if (!notice) return
     const timer = window.setTimeout(() => setNotice(''), 3200)
     return () => window.clearTimeout(timer)
   }, [notice])
 
-  const byId = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
-  useEffect(() => {
-    if (!restored || !items.length) return
-    setLoadout((current) => {
-      let changed = false
-      const next = { ...current }
-      for (const slot of slots) {
-        const item = current[slot] ? byId.get(current[slot] as string) : null
-        if (item && !isClassCompatible(item, classId)) {
-          next[slot] = null
-          changed = true
-        }
-      }
-      const main = next.main ? byId.get(next.main) : null
-      if (main && twoHanded.has(main.subtype) && next.off) {
-        next.off = null
-        changed = true
-      }
-      return changed ? next : current
-    })
-    setPreviewSlot(null)
-    setCandidate(null)
-  }, [classId, items, byId, restored])
-  useEffect(() => {
-    if (!restored || !items.length) return
-    setSocketLoadout((current) => {
-      let changed = false
-      const next: SocketLoadout = {}
-      for (const slot of slots) {
-        const item = loadout[slot] ? byId.get(loadout[slot] as string) : null
-        const values = (current[slot] || [])
-          .slice(0, item ? buildSocketCount(item) : 0)
-          .map((id) => (id && byId.get(id)?.category === 'socketable' ? id : null))
-        if (values.some(Boolean)) next[slot] = values
-        if (JSON.stringify(values) !== JSON.stringify(current[slot] || [])) changed = true
-      }
-      return changed ? next : current
-    })
-  }, [loadout, items.length, byId, restored])
+  const { classId, level, allocated, loadout, socketLoadout } = build
 
   const planner = useMemo(
-    () =>
-      calculatePlannerSnapshot({
-        classId,
-        level,
-        allocated,
-        loadout,
-        socketLoadout,
-        byId,
-        lang,
-      }),
-    [classId, level, allocated, loadout, socketLoadout, byId, lang],
+    () => calculatePlannerSnapshot({ ...build, byId, lang }),
+    [build, byId, lang],
   )
   const preview =
     candidate ||
@@ -158,13 +111,12 @@ export function BuildsPage({
         ? calculatePreviewSnapshot({
             preview,
             candidate: Boolean(candidate),
-            level,
             socketLoadout,
             byId,
             planner,
           })
         : null,
-    [preview, candidate, level, socketLoadout, byId, planner],
+    [preview, candidate, socketLoadout, byId, planner],
   )
   const pickerItems = useMemo(
     () => (picker ? filterEquipmentForSlot({ items, slot: picker, query, classId }) : []),
@@ -187,26 +139,17 @@ export function BuildsPage({
   }
   const equipCandidate = () => {
     if (!candidate) return
-    setLoadout((current) => ({
-      ...current,
-      [candidate.slot]: candidate.item.id,
-      ...(candidate.slot === 'main' && twoHanded.has(candidate.item.subtype) ? { off: null } : {}),
-    }))
-    setSocketLoadout((current) => ({
-      ...current,
-      [candidate.slot]: [],
-      ...(candidate.slot === 'main' && twoHanded.has(candidate.item.subtype) ? { off: [] } : {}),
-    }))
+    setBuild((current) => equipItem(current, candidate.slot, candidate.item))
     setCandidate(null)
     setPreviewSlot(null)
   }
   const chooseGem = (gem: PlannerEquipment) => {
     if (!gemPicker) return
     const { slot, index } = gemPicker
-    setSocketLoadout((current) => {
-      const values = [...(current[slot] || [])]
+    setBuild((current) => {
+      const values = [...(current.socketLoadout[slot] || [])]
       values[index] = gem.id
-      return { ...current, [slot]: values }
+      return { ...current, socketLoadout: { ...current.socketLoadout, [slot]: values } }
     })
     setGemPicker(null)
     setGemQuery('')
@@ -217,18 +160,13 @@ export function BuildsPage({
     setCandidate(null)
   }
   const resetBuild = () => {
-    setClassId('berserker')
-    setLevel(100)
-    setAllocated({ str: 0, dex: 0, foc: 0, vit: 0 })
-    setLoadout(emptyLoadout())
-    setSocketLoadout({})
+    setBuild(emptyBuild())
     setPreviewSlot(null)
     setCandidate(null)
     setGemPicker(null)
   }
   const removeItem = (slot: Slot) => {
-    setLoadout((current) => ({ ...current, [slot]: null }))
-    setSocketLoadout((current) => ({ ...current, [slot]: [] }))
+    setBuild((current) => removeBuildItem(current, slot))
     if (previewSlot === slot) setPreviewSlot(null)
   }
   const openItemPicker = (slot: Slot) => {
@@ -246,17 +184,16 @@ export function BuildsPage({
     closePreview()
   }
   const removeGem = (slot: Slot, index: number) => {
-    setSocketLoadout((current) => {
-      const values = [...(current[slot] || [])]
+    setBuild((current) => {
+      const values = [...(current.socketLoadout[slot] || [])]
       values[index] = null
-      return { ...current, [slot]: values }
+      return { ...current, socketLoadout: { ...current.socketLoadout, [slot]: values } }
     })
   }
-  const currentBuild = (): BuildState => ({ classId, level, allocated, loadout, socketLoadout })
   const exportBuild = async () => {
     let text: string
     try {
-      text = await serializeBuild(currentBuild(), lang)
+      text = await serializeBuild(build, lang)
     } catch {
       setNotice(
         copy(
@@ -349,11 +286,7 @@ export function BuildsPage({
       return
     }
     const { state, skipped } = result
-    setClassId(state.classId)
-    setLevel(state.level)
-    setAllocated(state.allocated)
-    setLoadout(state.loadout)
-    setSocketLoadout(state.socketLoadout)
+    setBuild(state)
     setPreviewSlot(null)
     setCandidate(null)
     setPicker(null)
@@ -394,6 +327,11 @@ export function BuildsPage({
     setGemQuery('')
     setPreviewSlot(gemPicker.slot)
   }
+  const changeBuildClass = (classId: string) => {
+    setBuild((current) => changeClass(current, classId, byId))
+    setPreviewSlot(null)
+    setCandidate(null)
+  }
 
   return (
     <>
@@ -418,10 +356,13 @@ export function BuildsPage({
         socketLoadout={socketLoadout}
         byId={byId}
         planner={planner}
-        onClassChange={setClassId}
-        onLevelChange={setLevel}
+        onClassChange={changeBuildClass}
+        onLevelChange={(level) => setBuild((current) => ({ ...current, level }))}
         onAllocatedChange={(stat, value) =>
-          setAllocated((current) => ({ ...current, [stat]: value }))
+          setBuild((current) => ({
+            ...current,
+            allocated: { ...current.allocated, [stat]: value },
+          }))
         }
         onOpenImport={() => {
           onLoadItems()
@@ -459,8 +400,7 @@ export function BuildsPage({
           onQueryChange={setQuery}
           onClose={() => setPicker(null)}
           onClear={() => {
-            setLoadout((current) => ({ ...current, [picker]: null }))
-            setSocketLoadout((current) => ({ ...current, [picker]: [] }))
+            setBuild((current) => removeBuildItem(current, picker))
             setPicker(null)
           }}
           onChoose={chooseItem}

@@ -31,6 +31,14 @@ export interface BuildState {
   socketLoadout: SocketLoadout
 }
 
+export const emptyBuild = (): BuildState => ({
+  classId: 'berserker',
+  level: 100,
+  allocated: { str: 0, dex: 0, foc: 0, vit: 0 },
+  loadout: emptyLoadout(),
+  socketLoadout: {},
+})
+
 export const classBases: Record<string, Record<Stat, number>> = {
   berserker: { str: 15, dex: 15, foc: 5, vit: 5 },
   outlander: { str: 10, dex: 15, foc: 10, vit: 5 },
@@ -133,6 +141,53 @@ export const itemFitsSlot = (item: PlannerEquipment, slot: Slot) => {
     return (item.category === 'weapon' || item.subtype === 'shield') && !twoHanded.has(item.subtype)
   return slotSubtype[slot] === item.subtype
 }
+
+export const normalizeBuild = (
+  build: BuildState,
+  byId: Map<string, PlannerEquipment>,
+): BuildState => {
+  const loadout = emptyLoadout()
+  for (const slot of slots) {
+    const itemId = build.loadout[slot]
+    const item = itemId ? byId.get(itemId) : undefined
+    if (item && itemFitsSlot(item, slot) && isClassCompatible(item, build.classId))
+      loadout[slot] = item.id
+  }
+  const main = loadout.main ? byId.get(loadout.main) : undefined
+  if (main && twoHanded.has(main.subtype)) loadout.off = null
+
+  const socketLoadout: SocketLoadout = {}
+  for (const slot of slots) {
+    const item = loadout[slot] ? byId.get(loadout[slot] as string) : undefined
+    const values = (build.socketLoadout[slot] || [])
+      .slice(0, item ? buildSocketCount(item) : 0)
+      .map((id) => (id && byId.get(id)?.category === 'socketable' ? id : null))
+    if (values.some(Boolean)) socketLoadout[slot] = values
+  }
+  return { ...build, loadout, socketLoadout }
+}
+
+export const changeClass = (
+  build: BuildState,
+  classId: string,
+  byId: Map<string, PlannerEquipment>,
+) => (byId.size ? normalizeBuild({ ...build, classId }, byId) : { ...build, classId })
+
+export const equipItem = (build: BuildState, slot: Slot, item: PlannerEquipment): BuildState => {
+  const loadout = { ...build.loadout, [slot]: item.id }
+  const socketLoadout = { ...build.socketLoadout, [slot]: [] }
+  if (slot === 'main' && twoHanded.has(item.subtype)) {
+    loadout.off = null
+    socketLoadout.off = []
+  }
+  return { ...build, loadout, socketLoadout }
+}
+
+export const removeItem = (build: BuildState, slot: Slot): BuildState => ({
+  ...build,
+  loadout: { ...build.loadout, [slot]: null },
+  socketLoadout: { ...build.socketLoadout, [slot]: [] },
+})
 
 export const chance = (value: number) => Math.min(50, value * (0.2002 - 0.0002 * value))
 

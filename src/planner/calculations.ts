@@ -13,12 +13,11 @@ import {
   classDamageReduction,
   fixedEffectValue,
   isClassCompatible,
+  itemFitsSlot,
   rangeTotal,
-  slotSubtype,
   slots,
   statEffectTypes,
   statNames,
-  twoHanded,
   buildSocketCount,
   type Slot,
   type SocketLoadout,
@@ -57,7 +56,6 @@ export interface EffectSummary {
 export interface PlannerSnapshot {
   equipped: EquippedRow[]
   activeSocketRows: ActiveSocketRow[]
-  equipmentEffects: PlannerEffect[]
   effectSummary: EffectSummary[]
   gearStats: Record<Stat, number>
   stats: Record<Stat, number>
@@ -98,9 +96,6 @@ export interface PreviewSocket {
 export interface PreviewSnapshot {
   damage: [number, number]
   armor: [number, number]
-  slotItem: PlannerEquipment | null
-  slotEffects: PlannerEffect[]
-  slotStats: Record<Stat, number>
   requirements: PreviewRequirement[]
   sockets: PreviewSocket[]
 }
@@ -217,6 +212,16 @@ const summarizeEffects = (effects: PlannerEffect[], lang: Lang): EffectSummary[]
   })
 }
 
+const sumEffectStats = (effects: PlannerEffect[]) =>
+  effects.reduce(
+    (total, effect) => {
+      const stat = statEffectTypes[effect.type]
+      if (stat) total[stat] += fixedEffectValue(effect)
+      return total
+    },
+    { str: 0, dex: 0, foc: 0, vit: 0 } as Record<Stat, number>,
+  )
+
 export function calculatePlannerSnapshot(args: {
   classId: string
   level: number
@@ -251,14 +256,7 @@ export function calculatePlannerSnapshot(args: {
     ...activeSocketRows.flatMap((row) => row.effects),
   ]
   const effectSummary = summarizeEffects(equipmentEffects, lang)
-  const gearStats = equipmentEffects.reduce(
-    (total, effect) => {
-      const stat = statEffectTypes[effect.type]
-      if (stat) total[stat] += fixedEffectValue(effect)
-      return total
-    },
-    { str: 0, dex: 0, foc: 0, vit: 0 } as Record<Stat, number>,
-  )
+  const gearStats = sumEffectStats(equipmentEffects)
   const stats = Object.fromEntries(
     (Object.keys(statNames) as Stat[]).map((stat) => [
       stat,
@@ -334,14 +332,7 @@ export function calculatePlannerSnapshot(args: {
       ...item.effects,
       ...activeSocketRows.filter((row) => row.slot === slot).flatMap((row) => row.effects),
     ]
-    const ownStats = ownEffects.reduce(
-      (total, effect) => {
-        const stat = statEffectTypes[effect.type]
-        if (stat) total[stat] += fixedEffectValue(effect)
-        return total
-      },
-      { str: 0, dex: 0, foc: 0, vit: 0 } as Record<Stat, number>,
-    )
+    const ownStats = sumEffectStats(ownEffects)
     const statsOk =
       item.requirements.length > 0 &&
       item.requirements.every(
@@ -359,7 +350,6 @@ export function calculatePlannerSnapshot(args: {
   return {
     equipped,
     activeSocketRows,
-    equipmentEffects,
     effectSummary,
     gearStats,
     stats,
@@ -397,12 +387,11 @@ const slotsFromLoadout = (
 export function calculatePreviewSnapshot(args: {
   preview: EquippedRow
   candidate: boolean
-  level: number
   socketLoadout: SocketLoadout
   byId: Map<string, PlannerEquipment>
   planner: PlannerSnapshot
 }): PreviewSnapshot {
-  const { preview, candidate, level, socketLoadout, byId, planner } = args
+  const { preview, candidate, socketLoadout, byId, planner } = args
   const damage = rangeTotal(preview.item.damage)
   const armor = rangeTotal(preview.item.armor)
   const slotItem = planner.equipped.find((row) => row.slot === preview.slot)?.item || null
@@ -414,19 +403,11 @@ export function calculatePreviewSnapshot(args: {
           .flatMap((row) => row.effects),
       ]
     : []
-  const slotStats = slotEffects.reduce(
-    (total, effect) => {
-      const stat = statEffectTypes[effect.type]
-      if (stat) total[stat] += fixedEffectValue(effect)
-      return total
-    },
-    { str: 0, dex: 0, foc: 0, vit: 0 } as Record<Stat, number>,
-  )
-  const requirements =
-    preview.item.requirements.map((requirement) => ({
-      ...requirement,
-      ok: planner.stats[requirement.stat] - slotStats[requirement.stat] >= requirement.value,
-    })) || []
+  const slotStats = sumEffectStats(slotEffects)
+  const requirements = preview.item.requirements.map((requirement) => ({
+    ...requirement,
+    ok: planner.stats[requirement.stat] - slotStats[requirement.stat] >= requirement.value,
+  }))
   const sockets = !candidate
     ? Array.from({ length: buildSocketCount(preview.item) }, (_, index) => {
         const gemId = socketLoadout[preview.slot]?.[index]
@@ -434,7 +415,7 @@ export function calculatePreviewSnapshot(args: {
         return { index, gem, effects: gem ? activeGemEffects(gem, preview.item) : [] }
       })
     : []
-  return { damage, armor, slotItem, slotEffects, slotStats, requirements, sockets }
+  return { damage, armor, requirements, sockets }
 }
 
 export function filterEquipmentForSlot(args: {
@@ -447,15 +428,9 @@ export function filterEquipmentForSlot(args: {
   const needle = query.trim().toLowerCase()
   return items
     .filter((item) => {
-      if (item.category === 'pet' || item.category === 'socketable') return false
-      if (!isClassCompatible(item, classId)) return false
-      if (slot === 'main' && item.category !== 'weapon') return false
-      if (
-        (slot === 'off' && !(item.category === 'weapon' || item.subtype === 'shield')) ||
-        (slot === 'off' && twoHanded.has(item.subtype))
-      )
+      if (item.category === 'pet' || item.category === 'socketable' || !itemFitsSlot(item, slot))
         return false
-      if (slotSubtype[slot] && item.subtype !== slotSubtype[slot]) return false
+      if (!isClassCompatible(item, classId)) return false
       return (
         !needle ||
         `${allText(item.name)} ${ngLabel(item.ngTier) || ''} ${item.set ? allText(item.set) : ''} ${item.effects.map((effect) => (effect.text ? allText(effect.text) : '')).join(' ')}`
